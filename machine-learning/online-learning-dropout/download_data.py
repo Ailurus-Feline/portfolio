@@ -7,7 +7,7 @@ DATASETS = [
     "mitul1999/online-courses-usage-and-history-dataset",
 ]
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def download_dataset(dataset: str):
