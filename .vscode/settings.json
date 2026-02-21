@@ -1,0 +1,40 @@
+{
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 800,
+  "editor.tabSize": 4,
+  "editor.fontFamily": "JetBrains Mono, Menlo, monospace",
+  "editor.fontSize": 25,
+  "editor.minimap.enabled": false,
+  "terminal.integrated.fontFamily": "JetBrains Mono, Menlo, monospace",
+  "terminal.integrated.scrollback": 20000,
+  "terminal.integrated.shellIntegration.enabled": true,
+  "C_Cpp.default.compilerPath": "/opt/homebrew/bin/g++",
+  "C_Cpp.default.cppStandard": "c++26",
+  "C_Cpp.errorSquiggles": "enabled",
+  "python.defaultInterpreterPath": "/opt/homebrew/bin/python3",
+  "python.analysis.autoImportCompletions": true,
+  "javascript.validate.enable": true,
+  "liveServer.settings.CustomBrowser": "chrome",
+  "java.jdt.ls.java.home": 
+  "/opt/homebrew/Cellar/openjdk@21/21.0.9/libexec/openjdk.jdk/Contents/Home",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-21",
+      "path": 
+      "/opt/homebrew/Cellar/openjdk@21/21.0.9/libexec/openjdk.jdk/Contents/Home",
+      "default": true
+    }
+  ],
+  "terminal.integrated.env.osx": {
+    "JAVA_HOME": "/opt/homebrew/opt/openjdk@21",
+    "PATH": "/opt/homebrew/opt/openjdk@21/bin:${env:PATH}"
+  },
+  "java.debug.settings.console": "integratedTerminal",
+  "java.server.launchMode": "Standard",
+  "java.format.settings.url": "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml",
+  "java.format.settings.profile": "GoogleStyle",
+  "files.associations": {
+    "optional": "cpp"
+  },
+  "dotnet.defaultSolution": "disable"
+}

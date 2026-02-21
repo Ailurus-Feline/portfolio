@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/homebrew/opt/eigen/include/eigen3",
+                "/opt/homebrew/include",
+                "/opt/homebrew/opt/boost/include",
+                "/opt/homebrew/opt/eigen/include/eigen3",
+                "/opt/homebrew/opt/quantlib/include",
+                "/opt/homebrew/opt/spdlog/include",
+                "/opt/homebrew/opt/nlohmann-json/include",
+                "/opt/homebrew/opt/protobuf/include",
+                "/opt/homebrew/opt/grpc/include",
+                "/Users/myk070629/vcpkg/installed/arm64-osx/include"
+            ],
+            "defines": [],
+            "compilerPath": "/opt/homebrew/bin/g++",
+            "cppStandard": "c++26",
+            "compilerArgs": [
+                "-std=c++26",
+                "-fuse-ld=lld",
+                "-mmacosx-version-min=16.0"
+            ]
+        }
+    ],
+    "version": 4
+}

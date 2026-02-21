@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "auto run current file",
+      "type": "shell",
+      "command": "/bin/zsh",
+      "args": [
+        "-c",
+        "ext=\"${fileExtname}\"; root=\"${workspaceFolder}\"; if [ -d \"$root/Csharp\" ] && [ -f \"$root/Csharp/GuiApp/GuiApp.csproj\" ]; then root=\"$root/Csharp\"; fi; if [ \"$ext\" = \".cpp\" ]; then /opt/homebrew/bin/g++ -std=c++26 -fdiagnostics-color=always -g -o \"${fileDirname}/${fileBasenameNoExtension}\" \"${file}\" && \"${fileDirname}/${fileBasenameNoExtension}\"; elif [ \"$ext\" = \".py\" ]; then /opt/homebrew/bin/python3 \"${file}\"; elif [ \"$ext\" = \".js\" ]; then node \"${file}\"; elif [ \"$ext\" = \".java\" ]; then javac \"${file}\" && cd \"${fileDirname}\" && java \"${fileBasenameNoExtension}\"; elif [ \"$ext\" = \".cs\" ] || [ \"$ext\" = \".axaml\" ]; then cd \"$root\" && dotnet run --project GuiApp/GuiApp.csproj; else echo Unsupported file type: $ext; fi"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build-cpp",
+      "type": "shell",
+      "command": "/bin/zsh",
+      "args": [
+        "-c",
+        "/opt/homebrew/bin/g++ -std=c++26 -fdiagnostics-color=always -g -o \"${fileDirname}/${fileBasenameNoExtension}\" \"${file}\""
+      ],
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "build-csharp",
+      "type": "shell",
+      "command": "/bin/zsh",
+      "args": [
+        "-c",
+        "root=\"${workspaceFolder}\"; if [ -d \"$root/Csharp\" ] && [ -f \"$root/Csharp/GuiApp/GuiApp.csproj\" ]; then root=\"$root/Csharp\"; fi; cd \"$root\" && dotnet build GuiApp/GuiApp.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // Java：
+    {
+      "name": "Java Debug",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "${fileBasenameNoExtension}",
+      "cwd": "${fileDirname}",
+      "console": "integratedTerminal"
+    },
+
+    // C++：
+    {
+      "name": "C++ Debug",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${fileDirname}/${fileBasenameNoExtension}",
+      "args": [],
+      "cwd": "${fileDirname}",
+      "preLaunchTask": "build-cpp",
+      "stopOnEntry": false
+    },
+
+    // Python：
+    {
+      "name": "Python Debug",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+
+    // JavaScript：
+    {
+      "name": "JavaScript Debug",
+      "type": "node",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+
+    // C#：
+    {
+      "name": "C# Debug",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-csharp",
+      "program": "${workspaceFolder}/Csharp/bin/Debug/net*/Csharp.dll",
+      "cwd": "${workspaceFolder}/Csharp",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

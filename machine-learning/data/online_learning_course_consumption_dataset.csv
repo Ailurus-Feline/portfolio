@@ -1,0 +1,501 @@
+User_ID,Experience_Level,Course_Type,Platform,Hours_Spent_Per_Week,Course_Duration_Weeks,Completion_Status,Completion_Percentage,Dropout_Reason,Satisfaction_Score
+U0001,Fresher,Tech,Skillshare,16,8,Completed,67,No Dropout,2
+U0002,Fresher,Non-Tech,edX,17,22,Dropped,38,Time Constraint,3
+U0003,Fresher,Non-Tech,Coursera,19,21,In Progress,43,No Dropout,1
+U0004,Student,Non-Tech,Udemy,14,2,Dropped,14,Time Constraint,1
+U0005,Student,Non-Tech,Skillshare,8,10,Dropped,8,Too Difficult,4
+U0006,Working Professional,Tech,Coursera,11,11,In Progress,53,No Dropout,4
+U0007,Working Professional,Tech,YouTube,12,19,Dropped,34,Too Difficult,4
+U0008,Fresher,Tech,Skillshare,1,17,Dropped,37,Too Difficult,1
+U0009,Fresher,Non-Tech,Skillshare,12,14,Completed,51,No Dropout,1
+U0010,Working Professional,Non-Tech,edX,5,15,Completed,98,No Dropout,1
+U0011,Student,Tech,Skillshare,13,20,In Progress,71,No Dropout,5
+U0012,Student,Non-Tech,edX,6,3,In Progress,34,No Dropout,3
+U0013,Fresher,Tech,Coursera,19,5,Dropped,27,Time Constraint,3
+U0014,Working Professional,Non-Tech,edX,16,5,In Progress,79,No Dropout,2
+U0015,Fresher,Tech,Skillshare,2,15,In Progress,37,No Dropout,2
+U0016,Fresher,Tech,Udemy,20,14,Dropped,27,Too Difficult,2
+U0017,Working Professional,Tech,Udemy,12,15,Dropped,19,Too Difficult,1
+U0018,Working Professional,Tech,Udemy,7,20,Completed,38,No Dropout,4
+U0019,Working Professional,Non-Tech,Coursera,7,16,Completed,53,No Dropout,1
+U0020,Working Professional,Non-Tech,YouTube,16,10,Dropped,36,Time Constraint,3
+U0021,Student,Non-Tech,Skillshare,8,11,Completed,43,No Dropout,3
+U0022,Student,Tech,Skillshare,1,7,Completed,82,No Dropout,4
+U0023,Working Professional,Non-Tech,Udemy,11,9,In Progress,31,No Dropout,5
+U0024,Student,Tech,YouTube,7,16,Completed,45,No Dropout,5
+U0025,Fresher,Tech,edX,18,15,Completed,39,No Dropout,3
+U0026,Fresher,Non-Tech,YouTube,3,5,Completed,66,No Dropout,4
+U0027,Fresher,Tech,Coursera,6,15,Dropped,7,Lost Interest,2
+U0028,Fresher,Non-Tech,Udemy,17,17,In Progress,86,No Dropout,1
+U0029,Fresher,Non-Tech,YouTube,12,19,Dropped,35,No Dropout,5
+U0030,Student,Non-Tech,Skillshare,20,20,Completed,63,No Dropout,1
+U0031,Working Professional,Tech,Udemy,13,5,In Progress,68,No Dropout,3
+U0032,Fresher,Tech,edX,12,14,In Progress,49,No Dropout,4
+U0033,Fresher,Tech,edX,18,16,In Progress,95,No Dropout,1
+U0034,Working Professional,Non-Tech,Skillshare,5,14,Dropped,8,Too Difficult,3
+U0035,Fresher,Tech,YouTube,12,4,Dropped,35,Lost Interest,1
+U0036,Fresher,Non-Tech,Skillshare,4,15,Completed,84,No Dropout,3
+U0037,Fresher,Tech,Skillshare,3,21,Completed,45,No Dropout,5
+U0038,Student,Non-Tech,Udemy,17,24,Dropped,37,Lost Interest,2
+U0039,Student,Tech,Udemy,6,11,Dropped,5,No Dropout,1
+U0040,Fresher,Non-Tech,YouTube,3,2,In Progress,73,No Dropout,5
+U0041,Working Professional,Tech,YouTube,15,24,Dropped,20,Lost Interest,1
+U0042,Student,Non-Tech,Skillshare,3,21,Completed,85,No Dropout,2
+U0043,Fresher,Non-Tech,Coursera,12,16,Completed,56,No Dropout,4
+U0044,Student,Non-Tech,Skillshare,12,20,Dropped,7,Lost Interest,5
+U0045,Fresher,Non-Tech,Udemy,15,6,Completed,78,No Dropout,1
+U0046,Fresher,Tech,Udemy,2,22,Dropped,37,Too Difficult,4
+U0047,Student,Non-Tech,edX,11,15,Dropped,7,Time Constraint,5
+U0048,Fresher,Tech,Coursera,7,12,Dropped,9,Time Constraint,5
+U0049,Student,Non-Tech,Coursera,11,2,Completed,94,No Dropout,3
+U0050,Working Professional,Tech,Coursera,6,10,Dropped,8,No Dropout,3
+U0051,Working Professional,Non-Tech,edX,12,2,Completed,49,No Dropout,2
+U0052,Fresher,Tech,YouTube,17,17,Completed,81,No Dropout,4
+U0053,Working Professional,Tech,Skillshare,15,17,Dropped,36,Time Constraint,3
+U0054,Working Professional,Non-Tech,Coursera,8,11,Completed,35,No Dropout,4
+U0055,Working Professional,Tech,Udemy,9,13,Dropped,31,Time Constraint,2
+U0056,Working Professional,Non-Tech,edX,6,4,In Progress,55,No Dropout,5
+U0057,Working Professional,Non-Tech,edX,9,16,Completed,55,No Dropout,3
+U0058,Fresher,Non-Tech,Udemy,5,14,In Progress,80,No Dropout,1
+U0059,Student,Tech,Udemy,16,2,Dropped,7,No Dropout,1
+U0060,Working Professional,Tech,Udemy,11,10,In Progress,41,No Dropout,1
+U0061,Student,Non-Tech,YouTube,20,20,Dropped,33,Lost Interest,1
+U0062,Fresher,Tech,Coursera,5,2,Dropped,29,Lost Interest,1
+U0063,Working Professional,Non-Tech,Coursera,19,23,Completed,87,No Dropout,4
+U0064,Student,Tech,Skillshare,11,23,In Progress,98,No Dropout,2
+U0065,Student,Non-Tech,Skillshare,6,23,Dropped,25,Lost Interest,2
+U0066,Student,Tech,Coursera,12,8,In Progress,96,No Dropout,5
+U0067,Working Professional,Tech,Udemy,18,5,Dropped,6,Too Difficult,2
+U0068,Working Professional,Tech,Coursera,20,15,In Progress,54,No Dropout,2
+U0069,Working Professional,Tech,Udemy,1,18,In Progress,96,No Dropout,5
+U0070,Working Professional,Non-Tech,Skillshare,7,22,Completed,84,No Dropout,5
+U0071,Fresher,Tech,edX,4,7,Completed,34,No Dropout,3
+U0072,Student,Non-Tech,YouTube,16,17,Dropped,20,No Dropout,2
+U0073,Fresher,Non-Tech,Coursera,3,18,Dropped,19,No Dropout,5
+U0074,Student,Non-Tech,YouTube,13,20,In Progress,51,No Dropout,3
+U0075,Student,Tech,YouTube,3,17,In Progress,96,No Dropout,5
+U0076,Working Professional,Non-Tech,edX,20,24,Completed,67,No Dropout,5
+U0077,Working Professional,Tech,Udemy,12,16,Completed,36,No Dropout,5
+U0078,Working Professional,Non-Tech,edX,18,18,Dropped,38,Too Difficult,2
+U0079,Working Professional,Non-Tech,Skillshare,20,5,Completed,76,No Dropout,5
+U0080,Student,Tech,edX,6,17,Dropped,17,Lost Interest,4
+U0081,Working Professional,Tech,YouTube,3,22,In Progress,52,No Dropout,3
+U0082,Fresher,Non-Tech,Udemy,8,13,Completed,67,No Dropout,3
+U0083,Working Professional,Tech,edX,9,11,Dropped,30,Too Difficult,5
+U0084,Student,Non-Tech,Coursera,1,4,In Progress,58,No Dropout,1
+U0085,Student,Non-Tech,Udemy,15,23,Completed,97,No Dropout,3
+U0086,Student,Non-Tech,Udemy,8,18,Dropped,25,Too Difficult,4
+U0087,Fresher,Non-Tech,Udemy,2,2,In Progress,94,No Dropout,5
+U0088,Fresher,Tech,YouTube,10,11,Dropped,13,Time Constraint,5
+U0089,Working Professional,Non-Tech,edX,9,20,Completed,92,No Dropout,2
+U0090,Fresher,Tech,edX,13,11,In Progress,76,No Dropout,3
+U0091,Student,Tech,edX,9,10,In Progress,75,No Dropout,5
+U0092,Student,Non-Tech,YouTube,11,8,Completed,96,No Dropout,1
+U0093,Fresher,Tech,Coursera,4,10,Completed,34,No Dropout,1
+U0094,Student,Tech,edX,3,9,Completed,31,No Dropout,4
+U0095,Working Professional,Non-Tech,Coursera,15,21,Completed,73,No Dropout,4
+U0096,Working Professional,Non-Tech,YouTube,6,11,Completed,73,No Dropout,1
+U0097,Fresher,Tech,Udemy,2,11,In Progress,63,No Dropout,1
+U0098,Student,Tech,YouTube,4,12,Dropped,29,No Dropout,5
+U0099,Fresher,Non-Tech,Skillshare,12,23,Dropped,11,Time Constraint,4
+U0100,Student,Non-Tech,YouTube,13,8,In Progress,35,No Dropout,4
+U0101,Fresher,Tech,Coursera,17,2,Dropped,36,Time Constraint,2
+U0102,Working Professional,Tech,Udemy,20,17,Completed,64,No Dropout,3
+U0103,Working Professional,Non-Tech,YouTube,7,17,In Progress,73,No Dropout,1
+U0104,Student,Non-Tech,Udemy,20,12,Completed,38,No Dropout,2
+U0105,Working Professional,Non-Tech,Skillshare,6,5,In Progress,85,No Dropout,1
+U0106,Working Professional,Tech,Coursera,14,13,In Progress,56,No Dropout,2
+U0107,Student,Non-Tech,YouTube,19,10,Dropped,11,Too Difficult,2
+U0108,Fresher,Tech,YouTube,14,2,Completed,97,No Dropout,5
+U0109,Working Professional,Tech,Skillshare,3,18,In Progress,78,No Dropout,4
+U0110,Fresher,Non-Tech,YouTube,20,22,Dropped,34,Too Difficult,2
+U0111,Student,Non-Tech,Coursera,18,6,Dropped,10,Time Constraint,2
+U0112,Working Professional,Non-Tech,edX,15,10,Dropped,22,Time Constraint,4
+U0113,Fresher,Non-Tech,Coursera,5,12,Dropped,8,Time Constraint,5
+U0114,Working Professional,Non-Tech,Skillshare,14,20,In Progress,81,No Dropout,2
+U0115,Student,Tech,Skillshare,12,15,Completed,57,No Dropout,2
+U0116,Student,Non-Tech,Coursera,13,23,Completed,59,No Dropout,5
+U0117,Working Professional,Tech,edX,7,22,Dropped,24,Time Constraint,1
+U0118,Fresher,Non-Tech,Coursera,13,22,Completed,36,No Dropout,2
+U0119,Student,Non-Tech,Coursera,8,12,Completed,71,No Dropout,5
+U0120,Working Professional,Non-Tech,Udemy,7,6,Completed,71,No Dropout,5
+U0121,Fresher,Non-Tech,Udemy,3,19,Dropped,40,Lost Interest,3
+U0122,Fresher,Tech,Skillshare,17,19,In Progress,67,No Dropout,1
+U0123,Student,Non-Tech,Coursera,18,5,Completed,91,No Dropout,3
+U0124,Fresher,Tech,edX,6,5,Dropped,19,No Dropout,2
+U0125,Working Professional,Tech,Coursera,3,16,In Progress,83,No Dropout,4
+U0126,Working Professional,Non-Tech,Udemy,10,23,In Progress,84,No Dropout,2
+U0127,Fresher,Tech,edX,6,2,Completed,74,No Dropout,5
+U0128,Working Professional,Non-Tech,Udemy,10,4,Dropped,26,Time Constraint,3
+U0129,Student,Non-Tech,Udemy,18,23,Dropped,25,Lost Interest,5
+U0130,Student,Non-Tech,YouTube,14,6,Completed,67,No Dropout,1
+U0131,Fresher,Tech,YouTube,20,7,In Progress,34,No Dropout,2
+U0132,Working Professional,Non-Tech,Coursera,6,18,In Progress,71,No Dropout,5
+U0133,Student,Non-Tech,Udemy,12,20,Completed,75,No Dropout,2
+U0134,Working Professional,Tech,Coursera,12,19,In Progress,91,No Dropout,4
+U0135,Student,Non-Tech,YouTube,6,9,Completed,50,No Dropout,3
+U0136,Student,Non-Tech,YouTube,2,10,Completed,77,No Dropout,3
+U0137,Fresher,Non-Tech,YouTube,13,15,Dropped,23,Time Constraint,4
+U0138,Working Professional,Tech,Udemy,19,24,Completed,66,No Dropout,2
+U0139,Working Professional,Tech,YouTube,7,23,Completed,61,No Dropout,5
+U0140,Student,Non-Tech,Skillshare,17,20,Completed,61,No Dropout,2
+U0141,Fresher,Tech,YouTube,5,12,In Progress,91,No Dropout,3
+U0142,Working Professional,Non-Tech,Udemy,18,10,In Progress,91,No Dropout,3
+U0143,Working Professional,Non-Tech,Udemy,2,21,Dropped,18,Time Constraint,1
+U0144,Fresher,Non-Tech,edX,16,13,Completed,71,No Dropout,5
+U0145,Working Professional,Non-Tech,edX,1,19,In Progress,93,No Dropout,2
+U0146,Student,Tech,edX,1,8,In Progress,55,No Dropout,1
+U0147,Fresher,Non-Tech,edX,19,15,In Progress,84,No Dropout,2
+U0148,Working Professional,Tech,Udemy,2,12,Dropped,33,No Dropout,1
+U0149,Fresher,Tech,edX,16,16,In Progress,91,No Dropout,1
+U0150,Fresher,Non-Tech,YouTube,14,19,Completed,95,No Dropout,2
+U0151,Working Professional,Non-Tech,Udemy,6,20,In Progress,97,No Dropout,1
+U0152,Fresher,Tech,Udemy,11,5,In Progress,93,No Dropout,5
+U0153,Student,Non-Tech,edX,3,18,Dropped,22,Too Difficult,4
+U0154,Fresher,Non-Tech,Skillshare,12,14,Completed,56,No Dropout,5
+U0155,Student,Tech,YouTube,10,16,Dropped,12,Too Difficult,1
+U0156,Student,Tech,Udemy,13,6,In Progress,86,No Dropout,3
+U0157,Fresher,Tech,Coursera,2,23,Dropped,31,No Dropout,3
+U0158,Fresher,Tech,Skillshare,20,3,Dropped,17,Lost Interest,4
+U0159,Working Professional,Non-Tech,Udemy,9,24,In Progress,91,No Dropout,1
+U0160,Working Professional,Tech,edX,5,13,In Progress,86,No Dropout,2
+U0161,Student,Tech,edX,5,14,Completed,74,No Dropout,2
+U0162,Working Professional,Non-Tech,Udemy,16,9,Dropped,8,Too Difficult,3
+U0163,Fresher,Tech,Skillshare,18,11,Dropped,26,No Dropout,3
+U0164,Working Professional,Tech,Skillshare,8,4,Dropped,30,No Dropout,3
+U0165,Fresher,Non-Tech,Udemy,6,23,In Progress,63,No Dropout,2
+U0166,Fresher,Tech,edX,6,5,Dropped,35,No Dropout,2
+U0167,Student,Tech,edX,8,16,Dropped,23,No Dropout,4
+U0168,Fresher,Non-Tech,Coursera,17,9,Completed,44,No Dropout,2
+U0169,Working Professional,Tech,Coursera,12,13,Dropped,35,Too Difficult,4
+U0170,Working Professional,Tech,Skillshare,16,24,In Progress,78,No Dropout,1
+U0171,Fresher,Tech,Udemy,15,13,Dropped,28,Lost Interest,1
+U0172,Student,Non-Tech,Coursera,15,18,Completed,57,No Dropout,5
+U0173,Student,Non-Tech,Skillshare,11,4,In Progress,45,No Dropout,3
+U0174,Fresher,Tech,Udemy,20,24,In Progress,94,No Dropout,2
+U0175,Student,Non-Tech,edX,13,18,In Progress,93,No Dropout,5
+U0176,Working Professional,Tech,edX,5,6,Completed,39,No Dropout,3
+U0177,Student,Tech,YouTube,16,9,Completed,65,No Dropout,5
+U0178,Working Professional,Non-Tech,Coursera,11,4,Dropped,28,Too Difficult,2
+U0179,Working Professional,Non-Tech,Skillshare,9,16,Dropped,8,Time Constraint,5
+U0180,Working Professional,Non-Tech,edX,13,19,In Progress,54,No Dropout,5
+U0181,Working Professional,Non-Tech,edX,4,22,Dropped,16,Too Difficult,2
+U0182,Fresher,Tech,edX,5,4,Dropped,6,Too Difficult,3
+U0183,Student,Tech,Coursera,8,13,Dropped,34,Time Constraint,4
+U0184,Fresher,Non-Tech,Coursera,11,23,Dropped,18,Lost Interest,3
+U0185,Fresher,Non-Tech,Udemy,10,3,Dropped,10,Too Difficult,1
+U0186,Working Professional,Non-Tech,YouTube,14,17,Completed,36,No Dropout,4
+U0187,Working Professional,Non-Tech,Udemy,8,9,In Progress,58,No Dropout,2
+U0188,Working Professional,Non-Tech,edX,7,18,Dropped,32,Lost Interest,5
+U0189,Working Professional,Non-Tech,edX,12,4,In Progress,55,No Dropout,4
+U0190,Student,Non-Tech,Coursera,13,13,Dropped,9,Time Constraint,3
+U0191,Student,Non-Tech,YouTube,12,9,In Progress,86,No Dropout,3
+U0192,Fresher,Non-Tech,Coursera,5,15,Completed,43,No Dropout,5
+U0193,Fresher,Tech,Coursera,5,20,Completed,61,No Dropout,4
+U0194,Fresher,Non-Tech,Udemy,14,21,In Progress,52,No Dropout,2
+U0195,Working Professional,Non-Tech,edX,15,24,In Progress,48,No Dropout,4
+U0196,Working Professional,Non-Tech,Skillshare,8,20,In Progress,56,No Dropout,5
+U0197,Fresher,Tech,Coursera,2,8,Dropped,29,Lost Interest,4
+U0198,Student,Tech,YouTube,8,21,Completed,65,No Dropout,4
+U0199,Working Professional,Tech,YouTube,2,19,Dropped,20,No Dropout,3
+U0200,Fresher,Non-Tech,Udemy,16,8,In Progress,39,No Dropout,1
+U0201,Student,Non-Tech,Udemy,14,22,Dropped,37,Time Constraint,4
+U0202,Working Professional,Non-Tech,YouTube,6,18,Completed,61,No Dropout,1
+U0203,Working Professional,Tech,Udemy,4,14,In Progress,61,No Dropout,1
+U0204,Fresher,Non-Tech,Skillshare,7,7,In Progress,42,No Dropout,3
+U0205,Working Professional,Non-Tech,YouTube,18,9,Completed,63,No Dropout,4
+U0206,Fresher,Tech,YouTube,13,9,In Progress,30,No Dropout,3
+U0207,Working Professional,Tech,Udemy,5,4,In Progress,31,No Dropout,1
+U0208,Fresher,Tech,Udemy,3,8,In Progress,86,No Dropout,5
+U0209,Student,Tech,YouTube,17,3,Completed,41,No Dropout,4
+U0210,Student,Tech,YouTube,4,10,In Progress,69,No Dropout,3
+U0211,Fresher,Tech,Coursera,12,17,In Progress,92,No Dropout,2
+U0212,Student,Tech,Udemy,3,14,In Progress,46,No Dropout,2
+U0213,Working Professional,Tech,Coursera,11,17,Completed,99,No Dropout,3
+U0214,Student,Non-Tech,Udemy,16,23,Dropped,12,Time Constraint,4
+U0215,Student,Non-Tech,Coursera,14,12,Dropped,33,Too Difficult,3
+U0216,Fresher,Non-Tech,YouTube,16,19,In Progress,36,No Dropout,4
+U0217,Fresher,Tech,edX,13,4,Completed,58,No Dropout,4
+U0218,Fresher,Tech,edX,2,20,In Progress,48,No Dropout,4
+U0219,Student,Tech,Coursera,9,16,Dropped,29,No Dropout,5
+U0220,Fresher,Non-Tech,Udemy,12,6,Completed,77,No Dropout,5
+U0221,Fresher,Tech,Udemy,15,17,Dropped,18,Time Constraint,5
+U0222,Fresher,Tech,Coursera,4,18,In Progress,76,No Dropout,5
+U0223,Working Professional,Non-Tech,Udemy,7,22,Completed,68,No Dropout,2
+U0224,Fresher,Tech,edX,9,16,Completed,74,No Dropout,1
+U0225,Fresher,Non-Tech,Skillshare,1,15,Dropped,32,Lost Interest,4
+U0226,Fresher,Non-Tech,Coursera,16,9,Dropped,6,Time Constraint,3
+U0227,Fresher,Tech,Udemy,4,17,Dropped,40,No Dropout,5
+U0228,Fresher,Tech,Skillshare,10,10,In Progress,31,No Dropout,5
+U0229,Working Professional,Tech,YouTube,3,4,In Progress,56,No Dropout,5
+U0230,Working Professional,Tech,Coursera,12,3,Dropped,35,Lost Interest,1
+U0231,Student,Non-Tech,Coursera,20,10,In Progress,89,No Dropout,2
+U0232,Student,Tech,Udemy,16,16,Dropped,32,Lost Interest,2
+U0233,Student,Tech,Udemy,20,21,Dropped,30,Too Difficult,1
+U0234,Working Professional,Tech,Skillshare,3,4,In Progress,30,No Dropout,1
+U0235,Working Professional,Tech,Coursera,13,7,In Progress,64,No Dropout,3
+U0236,Fresher,Non-Tech,Coursera,17,5,Completed,78,No Dropout,4
+U0237,Student,Non-Tech,Skillshare,18,9,Completed,93,No Dropout,3
+U0238,Working Professional,Tech,YouTube,17,4,Dropped,10,No Dropout,4
+U0239,Fresher,Tech,Coursera,5,3,In Progress,63,No Dropout,3
+U0240,Working Professional,Tech,edX,10,17,Dropped,18,Lost Interest,5
+U0241,Student,Non-Tech,Coursera,2,19,Dropped,32,No Dropout,3
+U0242,Working Professional,Tech,Coursera,17,15,In Progress,81,No Dropout,4
+U0243,Working Professional,Tech,edX,2,16,Dropped,7,Too Difficult,5
+U0244,Student,Non-Tech,Udemy,5,18,Dropped,33,Too Difficult,2
+U0245,Working Professional,Non-Tech,Udemy,10,7,In Progress,89,No Dropout,2
+U0246,Working Professional,Non-Tech,Coursera,7,12,Completed,79,No Dropout,4
+U0247,Student,Non-Tech,Udemy,9,23,Completed,97,No Dropout,4
+U0248,Fresher,Non-Tech,Coursera,1,13,In Progress,54,No Dropout,4
+U0249,Student,Non-Tech,Coursera,14,14,Dropped,12,Lost Interest,1
+U0250,Fresher,Non-Tech,YouTube,5,5,Dropped,22,Too Difficult,3
+U0251,Student,Non-Tech,Skillshare,20,3,Dropped,5,No Dropout,1
+U0252,Student,Tech,edX,6,19,In Progress,53,No Dropout,3
+U0253,Fresher,Non-Tech,Coursera,16,13,Completed,92,No Dropout,1
+U0254,Working Professional,Tech,Coursera,4,14,In Progress,45,No Dropout,5
+U0255,Fresher,Tech,Udemy,20,19,In Progress,89,No Dropout,2
+U0256,Fresher,Tech,edX,9,15,Dropped,12,Too Difficult,4
+U0257,Working Professional,Tech,edX,16,21,Dropped,25,Too Difficult,5
+U0258,Fresher,Tech,edX,16,17,In Progress,100,No Dropout,1
+U0259,Working Professional,Tech,Coursera,7,5,In Progress,35,No Dropout,2
+U0260,Fresher,Tech,YouTube,8,24,In Progress,83,No Dropout,4
+U0261,Fresher,Tech,Udemy,9,4,Completed,30,No Dropout,4
+U0262,Fresher,Tech,Coursera,4,9,Dropped,26,Time Constraint,5
+U0263,Fresher,Tech,edX,16,4,Dropped,34,Time Constraint,3
+U0264,Student,Tech,edX,6,9,In Progress,82,No Dropout,1
+U0265,Fresher,Tech,Skillshare,5,7,In Progress,37,No Dropout,3
+U0266,Fresher,Non-Tech,Coursera,12,16,Completed,78,No Dropout,4
+U0267,Student,Non-Tech,Coursera,2,23,In Progress,31,No Dropout,3
+U0268,Student,Tech,edX,9,19,Completed,63,No Dropout,2
+U0269,Working Professional,Tech,Coursera,4,21,In Progress,54,No Dropout,3
+U0270,Fresher,Non-Tech,Coursera,6,23,Dropped,35,Too Difficult,4
+U0271,Student,Non-Tech,Coursera,13,11,Completed,70,No Dropout,1
+U0272,Working Professional,Non-Tech,YouTube,12,19,Dropped,20,Time Constraint,1
+U0273,Fresher,Tech,Skillshare,7,22,In Progress,33,No Dropout,5
+U0274,Student,Tech,Coursera,10,17,Dropped,30,No Dropout,5
+U0275,Working Professional,Tech,Coursera,2,11,In Progress,97,No Dropout,5
+U0276,Student,Non-Tech,Coursera,20,10,Completed,65,No Dropout,3
+U0277,Student,Tech,Udemy,12,20,Completed,42,No Dropout,3
+U0278,Working Professional,Non-Tech,edX,13,7,In Progress,79,No Dropout,2
+U0279,Working Professional,Tech,edX,8,20,Dropped,21,No Dropout,4
+U0280,Fresher,Non-Tech,edX,19,9,Completed,97,No Dropout,5
+U0281,Working Professional,Tech,Skillshare,19,6,Completed,95,No Dropout,5
+U0282,Student,Non-Tech,edX,7,14,Dropped,40,Time Constraint,5
+U0283,Working Professional,Tech,Coursera,14,14,Dropped,40,Too Difficult,1
+U0284,Fresher,Non-Tech,Udemy,14,24,Completed,33,No Dropout,5
+U0285,Student,Tech,edX,15,10,In Progress,55,No Dropout,5
+U0286,Fresher,Non-Tech,Udemy,15,16,In Progress,95,No Dropout,4
+U0287,Fresher,Tech,edX,19,14,Completed,30,No Dropout,5
+U0288,Student,Non-Tech,Skillshare,20,6,Completed,53,No Dropout,1
+U0289,Student,Tech,Udemy,16,22,Completed,35,No Dropout,4
+U0290,Fresher,Non-Tech,YouTube,17,11,Dropped,30,Lost Interest,1
+U0291,Student,Tech,YouTube,17,21,Dropped,30,Time Constraint,3
+U0292,Working Professional,Tech,Coursera,13,15,In Progress,30,No Dropout,1
+U0293,Working Professional,Non-Tech,YouTube,1,15,Dropped,29,Too Difficult,3
+U0294,Working Professional,Non-Tech,Coursera,4,2,In Progress,84,No Dropout,4
+U0295,Student,Non-Tech,Skillshare,6,12,Completed,55,No Dropout,3
+U0296,Working Professional,Non-Tech,Skillshare,11,22,Dropped,39,Lost Interest,3
+U0297,Student,Tech,edX,16,9,In Progress,46,No Dropout,4
+U0298,Fresher,Tech,edX,1,6,In Progress,65,No Dropout,4
+U0299,Student,Non-Tech,Coursera,12,16,Dropped,31,Too Difficult,1
+U0300,Working Professional,Non-Tech,Skillshare,8,12,Dropped,39,Lost Interest,2
+U0301,Fresher,Tech,edX,5,5,In Progress,100,No Dropout,5
+U0302,Fresher,Non-Tech,Coursera,1,5,Completed,60,No Dropout,4
+U0303,Fresher,Tech,Skillshare,18,23,Completed,65,No Dropout,4
+U0304,Working Professional,Non-Tech,Skillshare,20,5,Dropped,34,No Dropout,3
+U0305,Working Professional,Non-Tech,Udemy,18,5,Completed,40,No Dropout,4
+U0306,Working Professional,Non-Tech,edX,18,18,Completed,43,No Dropout,3
+U0307,Student,Non-Tech,edX,19,8,Dropped,26,Lost Interest,3
+U0308,Working Professional,Tech,Skillshare,13,14,Dropped,13,Too Difficult,1
+U0309,Working Professional,Non-Tech,Coursera,13,6,Dropped,34,Too Difficult,2
+U0310,Student,Tech,Udemy,11,14,Completed,83,No Dropout,3
+U0311,Working Professional,Non-Tech,YouTube,14,5,Completed,95,No Dropout,2
+U0312,Fresher,Tech,Skillshare,13,2,In Progress,47,No Dropout,4
+U0313,Fresher,Non-Tech,Coursera,11,13,In Progress,71,No Dropout,2
+U0314,Student,Tech,YouTube,20,9,Completed,96,No Dropout,4
+U0315,Student,Tech,YouTube,11,18,In Progress,68,No Dropout,3
+U0316,Fresher,Non-Tech,edX,14,8,Dropped,30,No Dropout,5
+U0317,Fresher,Tech,Coursera,2,11,In Progress,81,No Dropout,2
+U0318,Working Professional,Non-Tech,Skillshare,18,22,Dropped,9,Too Difficult,5
+U0319,Student,Non-Tech,Udemy,6,21,Completed,89,No Dropout,1
+U0320,Working Professional,Non-Tech,Skillshare,6,22,In Progress,44,No Dropout,2
+U0321,Student,Tech,Udemy,18,21,In Progress,94,No Dropout,1
+U0322,Student,Tech,Skillshare,16,19,Completed,48,No Dropout,4
+U0323,Working Professional,Tech,Coursera,11,12,In Progress,66,No Dropout,2
+U0324,Fresher,Non-Tech,Skillshare,10,20,In Progress,48,No Dropout,4
+U0325,Working Professional,Tech,Skillshare,9,10,Dropped,26,Lost Interest,5
+U0326,Fresher,Tech,Coursera,9,20,In Progress,50,No Dropout,2
+U0327,Student,Non-Tech,edX,6,5,In Progress,38,No Dropout,5
+U0328,Fresher,Non-Tech,Skillshare,17,3,Completed,90,No Dropout,2
+U0329,Student,Non-Tech,Coursera,12,17,In Progress,47,No Dropout,3
+U0330,Student,Non-Tech,Skillshare,8,19,In Progress,85,No Dropout,3
+U0331,Fresher,Tech,Udemy,10,22,In Progress,33,No Dropout,1
+U0332,Fresher,Non-Tech,edX,12,11,Completed,30,No Dropout,4
+U0333,Fresher,Non-Tech,Coursera,11,2,Dropped,40,Too Difficult,4
+U0334,Working Professional,Tech,Coursera,6,22,In Progress,86,No Dropout,4
+U0335,Working Professional,Tech,edX,12,4,Completed,65,No Dropout,3
+U0336,Student,Tech,edX,4,2,Completed,58,No Dropout,4
+U0337,Working Professional,Tech,edX,17,21,Completed,84,No Dropout,1
+U0338,Working Professional,Non-Tech,YouTube,14,4,In Progress,73,No Dropout,5
+U0339,Fresher,Non-Tech,Skillshare,1,5,Completed,32,No Dropout,2
+U0340,Fresher,Non-Tech,YouTube,5,13,Dropped,30,Time Constraint,1
+U0341,Fresher,Non-Tech,edX,19,9,Completed,72,No Dropout,5
+U0342,Student,Non-Tech,Udemy,6,13,Dropped,27,Too Difficult,5
+U0343,Working Professional,Tech,Coursera,17,4,In Progress,63,No Dropout,1
+U0344,Working Professional,Tech,Udemy,13,7,In Progress,95,No Dropout,1
+U0345,Working Professional,Tech,edX,19,7,Completed,69,No Dropout,5
+U0346,Working Professional,Non-Tech,edX,6,6,Completed,77,No Dropout,1
+U0347,Student,Tech,Coursera,18,17,Dropped,32,No Dropout,4
+U0348,Fresher,Non-Tech,edX,15,14,Dropped,20,Lost Interest,5
+U0349,Working Professional,Tech,Udemy,11,7,In Progress,82,No Dropout,4
+U0350,Student,Non-Tech,Skillshare,19,6,Dropped,7,No Dropout,4
+U0351,Fresher,Tech,YouTube,8,5,Dropped,35,No Dropout,1
+U0352,Fresher,Tech,Coursera,15,19,Dropped,38,Lost Interest,3
+U0353,Fresher,Tech,Coursera,17,6,Completed,56,No Dropout,2
+U0354,Working Professional,Non-Tech,edX,1,24,Dropped,37,No Dropout,1
+U0355,Student,Tech,edX,10,18,Completed,35,No Dropout,1
+U0356,Fresher,Tech,edX,16,16,Completed,46,No Dropout,2
+U0357,Working Professional,Non-Tech,edX,18,21,Dropped,10,No Dropout,5
+U0358,Working Professional,Non-Tech,Udemy,2,20,Completed,46,No Dropout,2
+U0359,Fresher,Non-Tech,YouTube,4,16,In Progress,70,No Dropout,2
+U0360,Student,Non-Tech,Skillshare,11,17,In Progress,48,No Dropout,1
+U0361,Working Professional,Non-Tech,Coursera,10,21,Completed,53,No Dropout,2
+U0362,Student,Tech,Udemy,16,3,Dropped,29,Lost Interest,2
+U0363,Fresher,Tech,Coursera,1,19,In Progress,90,No Dropout,5
+U0364,Working Professional,Tech,YouTube,19,11,Dropped,10,No Dropout,2
+U0365,Fresher,Tech,Coursera,15,21,Dropped,18,Too Difficult,4
+U0366,Fresher,Non-Tech,Coursera,7,8,Completed,75,No Dropout,1
+U0367,Working Professional,Tech,Skillshare,9,4,In Progress,71,No Dropout,1
+U0368,Student,Tech,Skillshare,11,19,Completed,35,No Dropout,4
+U0369,Student,Non-Tech,edX,4,15,In Progress,66,No Dropout,1
+U0370,Student,Tech,Skillshare,18,9,In Progress,32,No Dropout,2
+U0371,Fresher,Non-Tech,Udemy,2,5,Completed,81,No Dropout,3
+U0372,Fresher,Tech,Coursera,10,21,Dropped,6,Time Constraint,2
+U0373,Student,Tech,Skillshare,3,16,Dropped,13,No Dropout,1
+U0374,Fresher,Non-Tech,Udemy,11,21,In Progress,71,No Dropout,2
+U0375,Working Professional,Tech,YouTube,6,10,Dropped,29,Time Constraint,5
+U0376,Student,Non-Tech,Udemy,19,7,Completed,43,No Dropout,5
+U0377,Working Professional,Tech,Coursera,9,20,Completed,61,No Dropout,5
+U0378,Student,Tech,Coursera,11,17,In Progress,100,No Dropout,1
+U0379,Student,Non-Tech,Coursera,5,19,Completed,56,No Dropout,4
+U0380,Fresher,Tech,edX,6,5,Dropped,29,Lost Interest,3
+U0381,Student,Non-Tech,Udemy,17,21,Dropped,15,Time Constraint,3
+U0382,Working Professional,Tech,Coursera,11,24,Dropped,6,Too Difficult,3
+U0383,Fresher,Non-Tech,Skillshare,20,16,Dropped,11,Time Constraint,1
+U0384,Working Professional,Non-Tech,YouTube,7,22,Completed,49,No Dropout,3
+U0385,Fresher,Non-Tech,edX,6,16,Completed,36,No Dropout,4
+U0386,Working Professional,Non-Tech,edX,13,6,Dropped,11,Time Constraint,4
+U0387,Fresher,Tech,Skillshare,15,12,Dropped,26,Lost Interest,4
+U0388,Fresher,Tech,edX,6,6,Dropped,15,Too Difficult,1
+U0389,Student,Tech,Udemy,5,24,In Progress,44,No Dropout,2
+U0390,Working Professional,Tech,YouTube,11,13,Completed,33,No Dropout,3
+U0391,Fresher,Tech,Udemy,5,17,Dropped,5,Lost Interest,4
+U0392,Working Professional,Tech,Udemy,6,6,In Progress,71,No Dropout,1
+U0393,Working Professional,Non-Tech,Coursera,8,12,In Progress,69,No Dropout,5
+U0394,Student,Non-Tech,YouTube,11,11,Completed,34,No Dropout,5
+U0395,Fresher,Non-Tech,YouTube,14,8,Dropped,36,Lost Interest,4
+U0396,Fresher,Tech,Udemy,2,10,In Progress,88,No Dropout,2
+U0397,Working Professional,Non-Tech,Skillshare,9,9,Completed,57,No Dropout,3
+U0398,Fresher,Non-Tech,Coursera,15,13,In Progress,46,No Dropout,2
+U0399,Student,Tech,Skillshare,12,3,Dropped,28,Too Difficult,3
+U0400,Fresher,Tech,Skillshare,8,9,In Progress,93,No Dropout,3
+U0401,Working Professional,Non-Tech,Coursera,2,5,Dropped,24,Time Constraint,2
+U0402,Student,Non-Tech,edX,17,18,Completed,51,No Dropout,5
+U0403,Student,Tech,edX,7,22,Dropped,27,No Dropout,5
+U0404,Fresher,Non-Tech,Udemy,9,7,Completed,75,No Dropout,5
+U0405,Student,Tech,edX,6,15,Completed,53,No Dropout,1
+U0406,Working Professional,Non-Tech,edX,5,21,In Progress,38,No Dropout,5
+U0407,Student,Non-Tech,edX,15,8,Dropped,12,Lost Interest,2
+U0408,Student,Non-Tech,Udemy,8,23,Completed,32,No Dropout,2
+U0409,Fresher,Tech,edX,19,5,Dropped,8,No Dropout,3
+U0410,Student,Tech,YouTube,16,13,In Progress,45,No Dropout,3
+U0411,Working Professional,Tech,YouTube,19,8,In Progress,33,No Dropout,1
+U0412,Student,Tech,Coursera,9,12,Completed,94,No Dropout,1
+U0413,Working Professional,Tech,Skillshare,14,24,Completed,70,No Dropout,4
+U0414,Fresher,Non-Tech,edX,13,12,In Progress,68,No Dropout,1
+U0415,Working Professional,Non-Tech,edX,10,5,Completed,98,No Dropout,1
+U0416,Fresher,Tech,Skillshare,12,12,Completed,92,No Dropout,2
+U0417,Student,Non-Tech,YouTube,8,3,Dropped,23,Time Constraint,4
+U0418,Student,Tech,YouTube,2,24,In Progress,83,No Dropout,1
+U0419,Fresher,Non-Tech,Coursera,13,9,Completed,62,No Dropout,2
+U0420,Student,Non-Tech,edX,7,8,In Progress,70,No Dropout,4
+U0421,Fresher,Tech,Coursera,8,8,Dropped,22,No Dropout,3
+U0422,Student,Tech,Coursera,18,16,In Progress,47,No Dropout,1
+U0423,Fresher,Non-Tech,Udemy,15,12,Completed,96,No Dropout,5
+U0424,Working Professional,Tech,edX,20,20,In Progress,46,No Dropout,2
+U0425,Working Professional,Tech,Skillshare,18,11,Dropped,36,Time Constraint,1
+U0426,Fresher,Tech,Coursera,8,19,In Progress,42,No Dropout,1
+U0427,Student,Non-Tech,Skillshare,9,19,In Progress,41,No Dropout,5
+U0428,Student,Tech,Udemy,7,4,In Progress,44,No Dropout,5
+U0429,Student,Non-Tech,Coursera,10,4,In Progress,31,No Dropout,2
+U0430,Fresher,Non-Tech,Skillshare,16,2,Dropped,29,Too Difficult,2
+U0431,Fresher,Tech,edX,14,6,Completed,32,No Dropout,3
+U0432,Working Professional,Tech,Skillshare,2,5,Dropped,34,No Dropout,5
+U0433,Fresher,Non-Tech,Udemy,18,14,Dropped,28,No Dropout,3
+U0434,Student,Tech,edX,14,16,Completed,67,No Dropout,2
+U0435,Student,Tech,Udemy,4,11,Dropped,14,No Dropout,4
+U0436,Student,Non-Tech,Udemy,10,4,Dropped,34,Time Constraint,4
+U0437,Student,Non-Tech,YouTube,16,24,In Progress,61,No Dropout,5
+U0438,Working Professional,Tech,edX,13,17,Dropped,37,Too Difficult,1
+U0439,Fresher,Tech,Coursera,1,4,In Progress,99,No Dropout,1
+U0440,Student,Non-Tech,Coursera,10,11,Dropped,32,Too Difficult,1
+U0441,Working Professional,Tech,edX,2,22,Completed,46,No Dropout,4
+U0442,Working Professional,Tech,Udemy,11,21,Dropped,23,No Dropout,5
+U0443,Working Professional,Tech,Coursera,1,4,In Progress,91,No Dropout,3
+U0444,Working Professional,Tech,Coursera,20,10,Completed,32,No Dropout,4
+U0445,Student,Non-Tech,Coursera,8,11,In Progress,80,No Dropout,1
+U0446,Fresher,Non-Tech,edX,6,19,In Progress,88,No Dropout,1
+U0447,Student,Tech,Udemy,14,24,Dropped,23,Time Constraint,5
+U0448,Working Professional,Tech,Udemy,3,20,Dropped,7,Too Difficult,2
+U0449,Working Professional,Non-Tech,YouTube,6,4,Completed,37,No Dropout,3
+U0450,Student,Non-Tech,edX,6,12,Dropped,14,No Dropout,1
+U0451,Student,Tech,YouTube,17,16,Dropped,34,Too Difficult,3
+U0452,Student,Non-Tech,Skillshare,11,8,Completed,62,No Dropout,4
+U0453,Working Professional,Tech,Skillshare,5,21,In Progress,93,No Dropout,1
+U0454,Student,Tech,edX,8,6,In Progress,86,No Dropout,2
+U0455,Fresher,Tech,YouTube,10,16,Dropped,8,No Dropout,5
+U0456,Fresher,Non-Tech,edX,4,4,Dropped,34,No Dropout,5
+U0457,Working Professional,Non-Tech,Skillshare,20,23,Completed,94,No Dropout,3
+U0458,Fresher,Non-Tech,edX,8,16,Dropped,32,Time Constraint,4
+U0459,Student,Non-Tech,Coursera,4,19,Completed,99,No Dropout,2
+U0460,Student,Non-Tech,edX,17,12,Completed,34,No Dropout,5
+U0461,Student,Non-Tech,Udemy,13,21,Completed,45,No Dropout,4
+U0462,Working Professional,Non-Tech,YouTube,8,20,In Progress,79,No Dropout,4
+U0463,Working Professional,Tech,YouTube,5,10,In Progress,59,No Dropout,5
+U0464,Fresher,Non-Tech,edX,11,22,In Progress,98,No Dropout,2
+U0465,Student,Non-Tech,YouTube,13,2,Dropped,5,Too Difficult,5
+U0466,Working Professional,Non-Tech,YouTube,4,18,Completed,80,No Dropout,4
+U0467,Fresher,Tech,Coursera,19,21,Dropped,32,Time Constraint,2
+U0468,Working Professional,Non-Tech,Coursera,6,12,Completed,98,No Dropout,3
+U0469,Fresher,Tech,edX,11,21,In Progress,95,No Dropout,5
+U0470,Student,Non-Tech,Coursera,9,5,In Progress,30,No Dropout,3
+U0471,Working Professional,Non-Tech,YouTube,9,9,Dropped,11,Time Constraint,3
+U0472,Working Professional,Non-Tech,Coursera,14,2,In Progress,44,No Dropout,5
+U0473,Fresher,Tech,Skillshare,13,15,Completed,55,No Dropout,5
+U0474,Working Professional,Non-Tech,edX,13,12,Dropped,26,No Dropout,5
+U0475,Fresher,Non-Tech,Coursera,5,14,In Progress,48,No Dropout,3
+U0476,Working Professional,Tech,Udemy,20,15,Completed,44,No Dropout,2
+U0477,Fresher,Non-Tech,Skillshare,18,2,In Progress,43,No Dropout,3
+U0478,Student,Non-Tech,YouTube,3,13,Completed,72,No Dropout,4
+U0479,Student,Non-Tech,YouTube,8,13,Dropped,36,Time Constraint,2
+U0480,Fresher,Tech,edX,11,16,Dropped,33,Lost Interest,1
+U0481,Working Professional,Tech,Udemy,15,18,Dropped,5,Time Constraint,5
+U0482,Student,Non-Tech,edX,17,11,Completed,51,No Dropout,2
+U0483,Working Professional,Tech,Skillshare,13,18,Completed,78,No Dropout,3
+U0484,Working Professional,Tech,YouTube,2,11,In Progress,47,No Dropout,1
+U0485,Student,Non-Tech,edX,5,23,Dropped,10,No Dropout,5
+U0486,Student,Non-Tech,YouTube,7,5,Completed,50,No Dropout,4
+U0487,Fresher,Non-Tech,Coursera,10,9,Dropped,10,Time Constraint,3
+U0488,Student,Tech,YouTube,16,12,Completed,96,No Dropout,1
+U0489,Student,Tech,YouTube,20,5,Completed,48,No Dropout,3
+U0490,Working Professional,Non-Tech,Coursera,18,24,In Progress,70,No Dropout,3
+U0491,Fresher,Non-Tech,Coursera,9,10,In Progress,85,No Dropout,4
+U0492,Fresher,Tech,Skillshare,8,14,In Progress,63,No Dropout,4
+U0493,Working Professional,Non-Tech,edX,18,20,Completed,81,No Dropout,5
+U0494,Working Professional,Tech,edX,6,7,Completed,63,No Dropout,2
+U0495,Student,Tech,Skillshare,10,6,In Progress,100,No Dropout,1
+U0496,Working Professional,Non-Tech,Coursera,13,7,In Progress,47,No Dropout,2
+U0497,Working Professional,Tech,Skillshare,1,7,In Progress,76,No Dropout,2
+U0498,Fresher,Non-Tech,Udemy,2,16,In Progress,88,No Dropout,5
+U0499,Working Professional,Non-Tech,Skillshare,7,23,Dropped,7,No Dropout,1
+U0500,Working Professional,Non-Tech,Coursera,6,22,In Progress,85,No Dropout,5
