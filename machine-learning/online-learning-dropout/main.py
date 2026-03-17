@@ -11,6 +11,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix, classification_rep
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
+FIG_SIZE = (18, 7)
 
 completion_path  = DATA_DIR / "Course_Completion_Prediction.csv"
 consumption_path = DATA_DIR / "online_learning_course_consumption_dataset.csv"
@@ -20,55 +21,86 @@ df_completion  = pd.read_csv(completion_path)
 df_consumption = pd.read_csv(consumption_path)
 df_usage       = pd.read_csv(usage_path)
 
-
 print("Completion :", df_completion.shape)
 print("Consumption:", df_consumption.shape)
 print("Usage      :", df_usage.shape)
 
-print("\n\n\n\n\n")
-print(df_completion.head())
-print(df_completion.columns)
 
-'''counts = df_completion["Completed"].value_counts()
-fig, ax = plt.subplots()
-bars = ax.bar(counts.index, counts.values)
+
+completion_cnt = df_completion["Completed"].value_counts()
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+bars = ax.bar(completion_cnt.index, completion_cnt.values)
 ax.bar_label(bars)
-plt.show()'''
+ax.set_title("Completion Distribution")
+plt.show()
 
-y = df_completion["Completed"]
-features = [
-    "Age",
-    "Education_Level",
-    "Employment_Status",
-    "Device_Type",
-    "Internet_Connection_Quality",
-    "Category",
-    "Course_Level",
-    "Course_Duration_Days",
-    "Instructor_Rating",
-    "Login_Frequency",
-    "Average_Session_Duration_Min",
-    "Video_Completion_Rate",
-    "Discussion_Participation",
-    "Time_Spent_Hours",
-    "Days_Since_Last_Login",
-    "Notifications_Checked",
-    "Peer_Interaction_Score",
-    "Assignments_Submitted",
-    "Assignments_Missed",
-    "Quiz_Attempts",
-    "Quiz_Score_Avg",
-    "Project_Grade",
-    "Progress_Percentage",
-    "Rewatch_Count",
-    "Fee_Paid",
-    "Discount_Used",
-    "Payment_Amount",
-    "App_Usage_Percentage",
-    "Reminder_Emails_Clicked",
-    "Support_Tickets_Raised",
-    "Satisfaction_Rating"
-]
+
+numerics = df_completion.select_dtypes(include=["int64", "float64"]).columns
+df_completion[numerics].hist(bins=15, figsize=FIG_SIZE)
+plt.suptitle("Numerical Features Distribution")
+plt.tight_layout()
+plt.show()
+
+
+strs = df_completion.select_dtypes(include=["object"]).columns
+print(strs)
+for l in strs:
+    if df_completion[l].nunique() > 10:
+        continue
+    tmp_col = df_completion[l].value_counts()
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+    bars = ax.bar(tmp_col.index, tmp_col.values)
+    ax.bar_label(bars)
+    ax.set_title(l + " Distribution")
+    plt.xticks(rotation=30, ha='right')
+    plt.show()
+
+
+group_mean = df_completion.groupby("Completed")[numerics].mean()
+col1, col2 = group_mean.T.columns
+delta = (group_mean.T[col1] - group_mean.T[col2]).abs()
+new_df = pd.DataFrame({
+    f"{col1}_mean": group_mean.T[col1],
+    f"{col2}_mean": group_mean.T[col2],
+    "Delta": delta
+}).sort_values(by="abs_delta", ascending=False).head(10).T
+print("\n\n\nTop Features by Mean Difference:")
+features = new_df.columns.to_list()
+print(new_df[features].T)
+
+
+result = []
+for col in strs:
+    if col == "Completed":
+        continue
+    
+    dist = pd.crosstab(
+        df_completion[col],
+        df_completion["Completed"],
+        normalize="columns"
+    )
+    dist = dist.fillna(0)
+    
+    if dist.shape[1] != 2:
+        continue
+    
+    col1, col2 = dist.columns
+    delta_str = (dist[col1] - dist[col2]).abs().sum()
+    result.append((col, delta_str))
+
+result_df = pd.DataFrame(result, columns=["Feature", "L1 Distance"]).set_index("feature")
+result_df = result_df.sort_values(by="delta", ascending=False).head(10).T
+str_feature = result_df.columns.to_list()
+features += str_feature
+print("\n\n\nTop Categorical Features by Distribution Difference:")
+print(result_df[str_feature].T)
+
+
+
+
+
+'''y = df_completion["Completed"]
+
 x = df_completion[features]
 
 objs = x.select_dtypes(include=["object"]).columns
@@ -115,4 +147,4 @@ plt.show()
 coef.tail(10).plot(kind="barh")
 plt.show()
 
-x_test.loc[high_risk.index].mean().sort_values()
+x_test.loc[high_risk.index].mean().sort_values()'''
