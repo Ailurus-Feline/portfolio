@@ -98,4 +98,21 @@ print("\n\nAccuracy Score: ", accuracy_score(y_test, y_pred))
 print("\n\nConfusion Matrix: ", confusion_matrix(y_test, y_pred))
 print("\n\nClassification Report: ", classification_report(y_test, y_pred))
 
+risk_df = pd.DataFrame({
+    "y_true": y_test,
+    "y_prob": y_prob
+})
+high_risk = risk_df[risk_df["y_prob"] > 0.7]
 
+coef = pd.Series(mod.coef_[0], index=x.columns).sort_values()
+
+print(coef.head(10))
+print(coef.tail(10))
+
+coef.head(10).plot(kind="barh")
+plt.show()
+
+coef.tail(10).plot(kind="barh")
+plt.show()
+
+x_test.loc[high_risk.index].mean().sort_values()
