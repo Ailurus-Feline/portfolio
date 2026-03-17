@@ -87,3 +87,15 @@ x_train, x_test, y_train, y_test = train_test_split(
     test_size=0.2,
     random_state=42
 )
+
+mod = LogisticRegression(max_iter=1000)
+mod.fit(x_train, y_train)
+
+y_pred = mod.predict(x_test)
+y_prob = mod.predict_proba(x_test)
+
+print("\n\nAccuracy Score: ", accuracy_score(y_test, y_pred))
+print("\n\nConfusion Matrix: ", confusion_matrix(y_test, y_pred))
+print("\n\nClassification Report: ", classification_report(y_test, y_pred))
+
+
