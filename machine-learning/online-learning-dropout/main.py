@@ -97,39 +97,144 @@ for l in str_cols:
 
 df_completion = df_completion.dropna(axis=1, how="all")
 df_completion = df_completion.dropna(axis=0, how="all")
+num_cols, str_cols = get_cols(df_completion)
+
+ 
+def which_distribution(col):
+    min_val, max_val = col.min(), col.max()
+    
+    if 0 <= min_val and max_val <= 1:
+        return "ratio"
+    if 0 <= min_val and max_val <= 5:
+        return "rating"
+    if 0 <= min_val and max_val <= 6:
+        return "weekday"
+    if 0 <= min_val and max_val <= 30:
+        return "date"
+    if 0 <= min_val and max_val <= 11:
+        return "month"
+    if 0 <= min_val and max_val <= 100:
+        return "percentage"
+    if 1990 <= min_val and max_val <= 2100:
+        return "year"
+        
+    skew = col.skew()
+    unique_ratio = col.nunique() / len(col)
+        
+    if unique_ratio < (1 - RATIO) and ptypes.is_integer_dtype(col):
+        return "discrete"
+        
+    if skew > 1:
+        return "long_tail"
+    
+    if skew > -0.5 and skew < 0.5:
+        return "normal"
+    
+    return "general"
 
 
+def which_card(col):
+    unique = col.nunique(dropna=True)
+    
+    if unique <= 10:
+        return "low_card"
+    
+    if unique <= 50 and unique / len(col) < 0.7:
+        return "medium_card"
+    
+    return "high_card"
 
 
+for l in num_cols:
+    s = df_completion[l]
+    distr = which_distribution(s)
+    
+    def get_range(s):
+        Q1 = s.quantile(0.25)
+        Q3 = s.quantile(0.75)
+        IQR = Q3 - Q1
+        
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
 
-cmp_status = df_completion["Completed"].value_counts()
+        return lower, upper
+
+    if distr == "ratio":
+        df_completion[l] = s.clip(0, 1)
+        continue
+        
+    if distr == "rating":
+        df_completion[l] = s.clip(0, 5)
+        continue
+        
+    if distr == "percentage":
+        df_completion[l] = s.clip(0, 100)
+        continue
+        
+    if distr == "discrete":
+        df_completion[l] = s.clip(lower=0)
+        continue
+        
+    if distr == "long_tail":
+        s_log = np.log1p(s.clip(lower=0))
+            
+        _, upper = get_range(s_log)
+            
+        df_completion[l] = np.expm1(s_log.clip(0, upper))
+        continue
+    
+    lower, upper = get_range(s)  
+    df_completion[l] = s.clip(lower, upper)
+
+
+for l in str_cols:
+    if l == "Completed":
+        df_completion[l] = df_completion[l].map({"Completed": 1, "Not Completed": 0})
+        continue
+
+    s = df_completion[l]
+    s = s.fillna("Missing")
+    stand = which_card(s)
+
+    if stand in ["low_card", "medium_card"]:
+        dummies = pd.get_dummies(
+                s,
+                prefix=l,
+                drop_first=False
+            )
+        df_completion = pd.concat([df_completion.drop(columns=[l]), dummies], axis=1)
+        
+    else:
+        freq = s.value_counts(normalize=True)
+        df_completion[l] = s.map(freq).fillna(0)
+
+assert df_completion["Completed"].isin([0,1]).all()
+assert not df_completion.isna().any().any()
+assert all(ptypes.is_numeric_dtype(df_completion[c]) for c in df_completion.columns)
+df_completion = df_completion.reset_index(drop=True)
+
+
+tmp_col = df_completion["Completed"].value_counts()
 fig, ax = plt.subplots(figsize=FIG_SIZE)
-bars = ax.bar(cmp_status.index, cmp_status.values)
+bars = ax.bar(["Not Completed", "Completed"], tmp_col.values)
 ax.bar_label(bars)
 ax.set_title("Completion Distribution")
 plt.show()
 
-
-num_cols, str_cols = get_cols(df_completion)
-df_completion[num_cols].hist(bins=15, figsize=FIG_SIZE)
+numerics = df_completion.select_dtypes(include=["int64", "float64"]).columns
+numerics = numerics.drop("Completed", errors="ignore")
+df_completion[numerics].hist(bins=15, figsize=FIG_SIZE)
 plt.suptitle("Numerical Features Distribution")
 plt.tight_layout()
 plt.show()
 
 
-for l in str_cols:
-    if df_completion[l].nunique() > 10:
-        continue
-    tmp_col = df_completion[l].value_counts()
-    fig, ax = plt.subplots(figsize=FIG_SIZE)
-    bars = ax.bar(tmp_col.index, tmp_col.values)
-    ax.bar_label(bars)
-    ax.set_title(l + " Distribution")
-    plt.xticks(rotation=30, ha='right')
-    plt.show() 
+'''
+
+
     
 
-'''
+''' '''
 
 
 group_mean = df_completion.groupby("Completed")[numerics].mean()
