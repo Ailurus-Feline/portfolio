@@ -10,13 +10,30 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-from sklearn.preprocessing import StandardScaler 
+from sklearn.preprocessing import StandardScaler
+import test 
 
+
+# =========================================================
+# Configuration
+# =========================================================
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
-FIG_SIZE = (18, 7)
-RATIO = 0.9
 
+FIG_SIZE = (18, 7) 
+TOP_K_CAT = 10  # number of top features retained after ranking
+RATIO = 0.9     # threshold for type inference / high-cardinality detection
+MAPPING = {}    # stores categorical encoding mappings
+CARD_TYPE = {}  # Cardinality class per categorical feature (fit on train)
+
+pd.set_option('display.max_columns', None)   # Show all columns
+pd.set_option('display.width', None)         # Prevent automatic line wrapping
+pd.set_option('display.max_colwidth', None)  # Do not truncate column content
+
+
+# =========================================================
+# Data Loading
+# =========================================================
 completion_path  = DATA_DIR / "Course_Completion_Prediction.csv"
 consumption_path = DATA_DIR / "online_learning_course_consumption_dataset.csv"
 usage_path       = DATA_DIR / "online_courses_uses.csv"
@@ -30,15 +47,21 @@ print("Consumption:", df_consumption.shape)
 print("Usage      :", df_usage.shape)
 
 
-
-
-
+# =========================================================
+# Utility: Column Type Split
+# =========================================================
 num_cols = []
 str_cols = []
 id_cols = []
 
-
 def get_cols(df):
+    """
+    Split dataframe columns into numeric and non-numeric.
+
+    Returns:
+        num_cols (list): numeric feature names
+        str_cols (list): non-numeric feature names
+    """
     num_cols = []
     str_cols = []
 
@@ -50,26 +73,37 @@ def get_cols(df):
             str_cols.append(l)
     
     return num_cols, str_cols
-        
 
 
+
+# =========================================================
+# Step 1 — Structural Cleaning
+# - remove duplicates
+# - infer types (numeric / datetime)
+# - drop ID-like columns
+# =========================================================
 df_completion = df_completion.drop_duplicates()
+
 for l in df_completion.columns.to_list():
     tmp_col = df_completion[l]
 
+    # skip numeric columns
     if pd.api.types.is_numeric_dtype(tmp_col):
         continue
 
+    # attempt numeric coercion
     tmp_numeric = pd.to_numeric(tmp_col, errors="coerce")
     numeric_ratio = tmp_numeric.notna().mean()
     if numeric_ratio > RATIO: 
         df_completion[l] = tmp_numeric
         continue
 
+    # attempt datetime parsing and feature extraction
     tmp_date = pd.to_datetime(
             tmp_col, 
             errors="coerce", 
-            cache=True
+            cache=True,
+            format="mixed"
         )
     date_ratio = tmp_date.notna().mean()
     if date_ratio > RATIO:
@@ -81,26 +115,102 @@ for l in df_completion.columns.to_list():
         df_completion.drop(columns=[l], inplace=True)
         continue
 
+    # detect ID-like columns (high uniqueness)
     if df_completion[l].nunique() > len(df_completion) * RATIO:
         id_cols.append(l)
-        continue
 
-
+# drop ID columns
 df_completion = df_completion.drop(columns=id_cols)
+
+# enforce target availability
 df_completion = df_completion.dropna(subset=["Completed"])
 
-num_cols, str_cols = get_cols(df_completion)
+
+# =========================================================
+# Dataset Split
+# =========================================================
+train_df, test_df = train_test_split(
+    df_completion,
+    test_size=0.2,
+    random_state=42,
+    stratify=df_completion["Completed"]
+)
+
+
+
+# =========================================================
+# Step 2 — Missing Value Handling
+# =========================================================
+num_cols, str_cols = get_cols(train_df)
+
+# store statistics from train
+median_map = {}
+
+# numeric: median imputation
 for l in num_cols:
-    df_completion[l] = df_completion[l].fillna(df_completion[l].median())
+    median_map[l] = train_df[l].median()
+    train_df[l] = train_df[l].fillna(median_map[l])
+
+# categorical: mark missing explicitly
 for l in str_cols:
-    df_completion[l] = df_completion[l].fillna(pd.NA)
+    train_df[l] = train_df[l].fillna(pd.NA)
 
-df_completion = df_completion.dropna(axis=1, how="all")
-df_completion = df_completion.dropna(axis=0, how="all")
-num_cols, str_cols = get_cols(df_completion)
+# apply same transformation to test
+for l in num_cols:
+    test_df[l] = test_df[l].fillna(median_map[l])
 
- 
+for l in str_cols:
+    test_df[l] = test_df[l].fillna(pd.NA)
+
+# remove empty rows/columns (based on train only)
+train_df = train_df.dropna(axis=1, how="all")
+train_df = train_df.dropna(axis=0, how="all")
+
+# align test columns with train
+test_df = test_df[train_df.columns]
+
+num_cols, str_cols = get_cols(train_df)
+
+
+'''
+# =========================================================
+# Step 3 — Exploratory Analysis (EDA)
+# =========================================================
+tmp_col = train_df["Completed"].value_counts()
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+bars = ax.bar(tmp_col.index, tmp_col.values)
+ax.bar_label(bars)
+ax.set_title("Completion Distribution")
+plt.show()
+
+numerics = train_df.select_dtypes(include=["int64", "float64"]).columns
+train_df[numerics].hist(bins=15, figsize=FIG_SIZE)
+plt.suptitle("Numerical Features Distribution")
+plt.tight_layout()
+plt.show()
+
+for l in str_cols:
+    if train_df[l].nunique() > 10:
+        continue
+    if l == "Completed":
+        continue
+
+    tmp_col = train_df[l].value_counts()
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+    bars = ax.bar(tmp_col.index, tmp_col.values)
+    ax.bar_label(bars)
+    ax.set_title(l + " Distribution")
+    plt.show()
+'''
+
+
+# =========================================================
+# Step 4 — Feature Scaling and Encoding Rules
+# =========================================================
 def which_distribution(col):
+    """
+    Classify numeric columns by value range and empirical distribution.
+    """
     min_val, max_val = col.min(), col.max()
     
     if 0 <= min_val and max_val <= 1:
@@ -132,8 +242,10 @@ def which_distribution(col):
     
     return "general"
 
-
 def which_card(col):
+    """
+    Classify categorical columns by cardinality level.
+    """
     unique = col.nunique(dropna=True)
     
     if unique <= 10:
@@ -145,11 +257,15 @@ def which_card(col):
     return "high_card"
 
 
+
 for l in num_cols:
-    s = df_completion[l]
+    s = train_df[l]
     distr = which_distribution(s)
     
     def get_range(s):
+        """
+        Compute IQR-based clipping bounds.
+        """
         Q1 = s.quantile(0.25)
         Q3 = s.quantile(0.75)
         IQR = Q3 - Q1
@@ -159,184 +275,285 @@ for l in num_cols:
 
         return lower, upper
 
+    # apply fixed-range clipping for bounded numeric features
     if distr == "ratio":
-        df_completion[l] = s.clip(0, 1)
+        MAPPING[l] = (0, 1)
+        train_df[l] = s.clip(0, 1)
         continue
         
     if distr == "rating":
-        df_completion[l] = s.clip(0, 5)
+        MAPPING[l] = (0, 5)
+        train_df[l] = s.clip(0, 5)
         continue
         
     if distr == "percentage":
-        df_completion[l] = s.clip(0, 100)
+        MAPPING[l] = (0, 100)
+        train_df[l] = s.clip(0, 100)
         continue
         
     if distr == "discrete":
-        df_completion[l] = s.clip(lower=0)
+        MAPPING[l] = (0, None)
+        train_df[l] = s.clip(lower=0)
         continue
         
+    # stabilize long-tail features before clipping
     if distr == "long_tail":
         s_log = np.log1p(s.clip(lower=0))
-            
         _, upper = get_range(s_log)
-            
-        df_completion[l] = np.expm1(s_log.clip(0, upper))
+        MAPPING[l] = (0, upper, "log")
+        train_df[l] = np.expm1(s_log.clip(0, upper))
         continue
     
+    # apply IQR-based clipping for general numeric features
     lower, upper = get_range(s)  
-    df_completion[l] = s.clip(lower, upper)
+    MAPPING[l] = (lower, upper)
+    train_df[l] = s.clip(lower, upper)
+
+# apply same clipping to test
+for l in num_cols:
+    s = test_df[l]
+
+    rule = MAPPING[l]
+
+    if len(rule) == 2:
+        lower, upper = rule
+        test_df[l] = s.clip(lower, upper)
+    else:
+        _, upper, _ = rule
+        s_log = np.log1p(s.clip(lower=0))
+        test_df[l] = np.expm1(s_log.clip(0, upper))
 
 
+# categorical encoding
 for l in str_cols:
-    if l == "Completed":
-        df_completion[l] = df_completion[l].map({"Completed": 1, "Not Completed": 0})
-        continue
-
-    s = df_completion[l]
-    s = s.fillna("Missing")
+    s = train_df[l].fillna("Missing")
     stand = which_card(s)
+    CARD_TYPE[l] = stand
 
+    # use ordinal category codes for low- and medium-cardinality features
     if stand in ["low_card", "medium_card"]:
-        dummies = pd.get_dummies(
-                s,
-                prefix=l,
-                drop_first=False
-            )
-        df_completion = pd.concat([df_completion.drop(columns=[l]), dummies], axis=1)
+        train_df[l] = train_df[l].astype("category")
+        MAPPING[l] = {cat: i for i, cat in enumerate(train_df[l].cat.categories)}
         
+        train_df[l] = train_df[l].cat.codes
+    
+    # use frequency encoding for high-cardinality features
     else:
         freq = s.value_counts(normalize=True)
-        df_completion[l] = s.map(freq).fillna(0)
+        MAPPING[l] = freq
+        train_df[l] = s.map(freq)
 
-assert df_completion["Completed"].isin([0,1]).all()
-assert not df_completion.isna().any().any()
-assert all(ptypes.is_numeric_dtype(df_completion[c]) for c in df_completion.columns)
-df_completion = df_completion.reset_index(drop=True)
+      
+# apply same mapping to test
+for l in str_cols:
+    s = test_df[l].fillna("Missing")
+    stand = CARD_TYPE[l]
 
+    if stand in ["low_card", "medium_card"]:
+        test_df[l] = test_df[l].map(MAPPING[l])
 
-tmp_col = df_completion["Completed"].value_counts()
-fig, ax = plt.subplots(figsize=FIG_SIZE)
-bars = ax.bar(["Not Completed", "Completed"], tmp_col.values)
-ax.bar_label(bars)
-ax.set_title("Completion Distribution")
-plt.show()
-
-numerics = df_completion.select_dtypes(include=["int64", "float64"]).columns
-numerics = numerics.drop("Completed", errors="ignore")
-df_completion[numerics].hist(bins=15, figsize=FIG_SIZE)
-plt.suptitle("Numerical Features Distribution")
-plt.tight_layout()
-plt.show()
+    else:
+        test_df[l] = s.map(MAPPING[l])
 
 
-'''
+# validate target and feature matrix consistency
+assert train_df["Completed"].isin([0,1]).all()
+assert not train_df.isna().any().any()
+assert all(ptypes.is_numeric_dtype(train_df[c]) for c in train_df.columns)
+
+train_df = train_df.reset_index(drop=True)
+test_df  = test_df.reset_index(drop=True)
 
 
-    
 
-''' '''
+# =========================================================
+# Step 5 — Feature Engineering
+# =========================================================
 
-
-group_mean = df_completion.groupby("Completed")[numerics].mean()
-col1, col2 = group_mean.T.columns
-delta = (group_mean.T[col1] - group_mean.T[col2]).abs()
-new_df = pd.DataFrame({
-    f"{col1}_mean": group_mean.T[col1],
-    f"{col2}_mean": group_mean.T[col2],
-    "Delta": delta
-}).sort_values(by="Delta", ascending=False).head(10).T
-print("\n\n\nTop Features by Mean Difference:")
-features = new_df.columns.to_list()
-print(new_df[features].T)
+# drop constant columns
+constant_cols = [l for l in train_df.columns if train_df[l].nunique() <= 1]
+train_df = train_df.drop(columns=constant_cols)
 
 
-result = []
-for col in strs:
-    if col == "Completed":
+# =========================================================
+# Remove Perfectly Redundant Features
+# =========================================================
+
+# detect columns with identical values
+corr_matrix = train_df.corr()
+
+redundant_cols = set()
+cols = corr_matrix.columns
+
+
+for i in range(len(cols) - 1):
+    if cols[i] in redundant_cols:
         continue
-    
-    dist = pd.crosstab(
-        df_completion[col],
-        df_completion["Completed"],
-        normalize="columns"
-    )
-    dist = dist.fillna(0)
-    
-    if dist.shape[1] != 2:
-        continue
-    
-    col1, col2 = dist.columns
-    delta_str = (dist[col1] - dist[col2]).abs().sum()
-    result.append((col, delta_str))
 
-result_df = pd.DataFrame(result, columns=["Feature", "L1 Distance"]).set_index("Feature")
-result_df = result_df.sort_values(by="L1 Distance", ascending=False).head(10).T
-str_feature = result_df.columns.to_list()
-features += str_feature
-features = list(set(features))
-features = [f for f in features if f in df_completion.columns]
-print("\n\n\nTop Categorical Features by Distribution Difference:")
-print(result_df[str_feature].T)
+    for j in range(i + 1, len(cols)):
+        if cols[j] in redundant_cols:
+            continue
+
+        c1, c2 = cols[i], cols[j]
+
+        # linear redundancy
+        if np.isclose(abs(corr_matrix.iloc[i, j]), 1.0):
+            redundant_cols.add(c2)
+            continue
+
+        # functional redundancy: c1 → c2
+        if train_df.groupby(c1)[c2].nunique().max() == 1:
+            redundant_cols.add(c2)
+            continue
+
+        # functional redundancy: c2 → c1
+        if train_df.groupby(c2)[c1].nunique().max() == 1:
+            redundant_cols.add(c2)
+            break
+
+redundant_cols = list(redundant_cols)
+
+# separate features and target
+train_df = train_df.drop(columns=redundant_cols)
+test_df = test_df.drop(columns=redundant_cols)
+
+X_train = train_df.drop(columns=["Completed"])
+y_train = train_df["Completed"]
+
+X_test  = test_df.drop(columns=["Completed"])
+y_test  = test_df["Completed"]
 
 
 
+# =========================================================
+# Numeric Feature Scaling
+# =========================================================
+scaler = StandardScaler()
+num_train, _ = get_cols(X_train)
+num_test, _ = get_cols(X_test)
+
+X_train[num_train] = scaler.fit_transform(X_train[num_train])
+X_test[num_test]  = scaler.transform(X_test[num_test])
 
 
-y = df_completion["Completed"]
 
-x = df_completion[features]
+# =========================================================
+# Step 6 — EDA-based Feature Pre-screening
+# =========================================================
 
-objs = x.select_dtypes(include=["object"]).columns
-x = pd.get_dummies(x, columns=objs, drop_first=True,dtype=int)
-print("dtype: ", x.dtypes)
+numerics, _ = get_cols(train_df)
 
-print("null: ", x.isnull().sum())
-x = x.fillna(0)
 
-print("\n\n\n")
-print(x.dtypes.value_counts())
-print(x.isnull().sum().sum())
+# =========================================================
+# Feature Ranking
+# =========================================================
 
-x_train, x_test, y_train, y_test = train_test_split(
-    x, y,
-    test_size=0.2,
+# compute class-wise mean (binary target)
+group_mean = train_df.groupby("Completed")[numerics].mean()
+
+# compute global std (avoid division by 0)
+std = train_df[numerics].std().replace(0, 1e-10)
+
+# standardized mean difference (scale-invariant)
+delta = (group_mean.loc[0] - group_mean.loc[1]).abs() / std
+
+# format output
+num_df = pd.DataFrame({
+    "0_mean": group_mean.loc[0],
+    "1_mean": group_mean.loc[1],
+    "Std": std,
+    "Std_Delta": delta
+}).sort_values(by="Std_Delta", ascending=False)
+
+features = num_df[num_df["Std_Delta"] > 0.05].index.to_list()
+
+# ensure features exist in processed dataset
+features = [f for f in features if f in train_df.columns and f != "Completed"]
+
+print("\n\n\nSelected Features: ")
+print(features)
+
+
+
+# =========================================================
+# Step 7 — Baseline Model (Logistic Regression)
+# =========================================================
+
+# use selected features only
+X_train_sel = X_train[features]
+X_test_sel  = X_test[features]
+
+# initialize model
+model = LogisticRegression(
+    max_iter=1000,
+    class_weight="balanced",   # handle potential imbalance
     random_state=42
 )
 
-# ======== START ADDED (标准化) ========
-scaler = StandardScaler()
-x_train = scaler.fit_transform(x_train)
-x_test = scaler.transform(x_test)
-# ======== END ADDED ========
-
-mod = LogisticRegression(max_iter=1000)
-mod.fit(x_train, y_train)
-
-y_pred = mod.predict(x_test)
-y_prob = mod.predict_proba(x_test)[:, 1]
-
-print("\n\nAccuracy Score: ", accuracy_score(y_test, y_pred))
-print("\n\nConfusion Matrix: ", confusion_matrix(y_test, y_pred))
-print("\n\nClassification Report: ", classification_report(y_test, y_pred))
-
-risk_df = pd.DataFrame({
-    "y_true": y_test,
-    "y_prob": y_prob
-})
-high_risk = risk_df[risk_df["y_prob"] > 0.7]
-
-# ======== START FIXED (coef对应feature名) ========
-coef = pd.Series(mod.coef_[0], index=x.columns).sort_values()
-# ======== END FIXED ========
+# train
+model.fit(X_train_sel, y_train)
 
 
-print(coef.head(10))
-print(coef.tail(10))
+# =========================================================
+# Prediction
+# =========================================================
 
-coef.head(10).plot(kind="barh")
+y_pred = model.predict(X_test_sel)
+y_prob = model.predict_proba(X_test_sel)[:, 1]   # probability of class 1
+
+
+# =========================================================
+# Evaluation
+# =========================================================
+
+acc = accuracy_score(y_test, y_pred)
+cm  = confusion_matrix(y_test, y_pred)
+report = classification_report(y_test, y_pred)
+
+print("\n\n=== Model Performance ===")
+print(f"Accuracy: {acc:.4f}")
+
+print("\nConfusion Matrix:")
+print(cm)
+
+print("\nClassification Report:")
+print(report)
+
+
+
+# =========================================================
+# Visualization — Confusion Matrix
+# =========================================================
+
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    xticklabels=["Not Completed", "Completed"],
+    yticklabels=["Not Completed", "Completed"],
+    ax=ax
+)
+
+ax.set_xlabel("Predicted")
+ax.set_ylabel("Actual")
+ax.set_title("Confusion Matrix")
 plt.show()
 
-coef.tail(10).plot(kind="barh")
-plt.show()
 
-x.loc[high_risk.index].mean().sort_values()'''
+
+# =========================================================
+# Feature Importance (Logistic Regression Coefficients)
+# =========================================================
+
+coef_df = pd.DataFrame({
+    "Feature": X_train_sel.columns,
+    "Coefficient": model.coef_[0]
+}).sort_values(by="Coefficient", ascending=False)
+
+print("\n\nTop Positive Features:")
+print(coef_df.head(10))
+
+print("\nTop Negative Features:")
+print(coef_df.tail(10))
