@@ -1,4 +1,3 @@
-from datetime import date
 from pathlib import Path
 import pandas as pd
 import pandas.api.types as ptypes
@@ -11,7 +10,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from sklearn.preprocessing import StandardScaler
-import test 
 
 
 # =========================================================
@@ -19,6 +17,7 @@ import test
 # =========================================================
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
+(COMPLETION_DIR := DATA_DIR / "Processed" / "Completion").mkdir(parents=True, exist_ok=True)
 
 FIG_SIZE = (18, 7) 
 TOP_K_CAT = 10  # number of top features retained after ranking
@@ -121,9 +120,11 @@ for l in df_completion.columns.to_list():
 
 # drop ID columns
 df_completion = df_completion.drop(columns=id_cols)
+print(f"\n\n\nID-like columns: {id_cols}")
 
 # enforce target availability
 df_completion = df_completion.dropna(subset=["Completed"])
+df_completion.to_csv(f"{COMPLETION_DIR}/Completion_Cleaned.csv", index=False)
 
 
 # =========================================================
@@ -147,19 +148,27 @@ num_cols, str_cols = get_cols(train_df)
 median_map = {}
 
 # numeric: median imputation
+print("\n\n\n")
 for l in num_cols:
     median_map[l] = train_df[l].median()
+    print(f"Train {l} Numeric NA: {train_df[l].isna().sum()}")
     train_df[l] = train_df[l].fillna(median_map[l])
 
 # categorical: mark missing explicitly
+print("\n\n\n")
 for l in str_cols:
+    print(f"Train {l} String NA: {train_df[l].isna().sum()}")
     train_df[l] = train_df[l].fillna(pd.NA)
 
 # apply same transformation to test
+print("\n\n\n")
 for l in num_cols:
+    print(f"Test {l} Numeric NA: {test_df[l].isna().sum()}")
     test_df[l] = test_df[l].fillna(median_map[l])
 
+print("\n\n\n")
 for l in str_cols:
+    print(f"Test {l} String NA: {test_df[l].isna().sum()}")
     test_df[l] = test_df[l].fillna(pd.NA)
 
 # remove empty rows/columns (based on train only)
@@ -168,6 +177,9 @@ train_df = train_df.dropna(axis=0, how="all")
 
 # align test columns with train
 test_df = test_df[train_df.columns]
+train_df.to_csv(f"{COMPLETION_DIR}/Train_Cleaned.csv", index=False)
+test_df.to_csv(f"{COMPLETION_DIR}/Test_Cleaned.csv", index=False)
+
 
 num_cols, str_cols = get_cols(train_df)
 
@@ -258,9 +270,11 @@ def which_card(col):
 
 
 
+print("\n\n\n")
 for l in num_cols:
     s = train_df[l]
     distr = which_distribution(s)
+    print(f"Train {l} Numeric Distribution: {distr}")
     
     def get_range(s):
         """
@@ -325,9 +339,11 @@ for l in num_cols:
 
 
 # categorical encoding
+print("\n\n\n")
 for l in str_cols:
     s = train_df[l].fillna("Missing")
     stand = which_card(s)
+    print(f"Train {l} Category Distribution: {stand}")
     CARD_TYPE[l] = stand
 
     # use ordinal category codes for low- and medium-cardinality features
@@ -364,6 +380,9 @@ assert all(ptypes.is_numeric_dtype(train_df[c]) for c in train_df.columns)
 train_df = train_df.reset_index(drop=True)
 test_df  = test_df.reset_index(drop=True)
 
+train_df.to_csv(f"{COMPLETION_DIR}/Train_Scaled.csv", index=False)
+test_df.to_csv(f"{COMPLETION_DIR}/Test_Scaled.csv", index=False)
+
 
 
 # =========================================================
@@ -372,6 +391,7 @@ test_df  = test_df.reset_index(drop=True)
 
 # drop constant columns
 constant_cols = [l for l in train_df.columns if train_df[l].nunique() <= 1]
+print(f"\n\n\nConstant Columns: {constant_cols}")
 train_df = train_df.drop(columns=constant_cols)
 
 
@@ -412,16 +432,26 @@ for i in range(len(cols) - 1):
             break
 
 redundant_cols = list(redundant_cols)
+print(f"\n\n\nRedundant Columns: {redundant_cols}")
 
 # separate features and target
 train_df = train_df.drop(columns=redundant_cols)
-test_df = test_df.drop(columns=redundant_cols)
+test_df = test_df[train_df.columns]
+
+train_df.to_csv(f"{COMPLETION_DIR}/Train_Dropped.csv", index=False)
+test_df.to_csv(f"{COMPLETION_DIR}/Test_Dropped.csv", index=False)
 
 X_train = train_df.drop(columns=["Completed"])
 y_train = train_df["Completed"]
 
+X_train.to_csv(f"{COMPLETION_DIR}/X_train.csv", index=False)
+y_train.to_csv(f"{COMPLETION_DIR}/y_train.csv", index=False)
+
 X_test  = test_df.drop(columns=["Completed"])
 y_test  = test_df["Completed"]
+
+X_test.to_csv(f"{COMPLETION_DIR}/X_test.csv", index=False)
+y_test.to_csv(f"{COMPLETION_DIR}/y_test.csv", index=False)
 
 
 
@@ -435,6 +465,8 @@ num_test, _ = get_cols(X_test)
 X_train[num_train] = scaler.fit_transform(X_train[num_train])
 X_test[num_test]  = scaler.transform(X_test[num_test])
 
+X_train.to_csv(f"{COMPLETION_DIR}/X_train_Transformed.csv", index=False)
+X_test.to_csv(f"{COMPLETION_DIR}/X_test_Transformed.csv", index=False)
 
 
 # =========================================================
@@ -450,9 +482,10 @@ numerics, _ = get_cols(train_df)
 
 # compute class-wise mean (binary target)
 group_mean = train_df.groupby("Completed")[numerics].mean()
+print(f"\n\n\nGroup Mean: {group_mean}")
 
 # compute global std (avoid division by 0)
-std = train_df[numerics].std().replace(0, 1e-10)
+std = train_df[numerics].std()
 
 # standardized mean difference (scale-invariant)
 delta = (group_mean.loc[0] - group_mean.loc[1]).abs() / std
@@ -483,6 +516,9 @@ print(features)
 X_train_sel = X_train[features]
 X_test_sel  = X_test[features]
 
+X_train_sel.to_csv(f"{COMPLETION_DIR}/X_train_Features.csv", index=False)
+X_test_sel.to_csv(f"{COMPLETION_DIR}/X_test_Features.csv", index=False)
+
 # initialize model
 model = LogisticRegression(
     max_iter=1000,
@@ -510,7 +546,7 @@ acc = accuracy_score(y_test, y_pred)
 cm  = confusion_matrix(y_test, y_pred)
 report = classification_report(y_test, y_pred)
 
-print("\n\n=== Model Performance ===")
+print("\n\n========== Model Performance ==========")
 print(f"Accuracy: {acc:.4f}")
 
 print("\nConfusion Matrix:")
