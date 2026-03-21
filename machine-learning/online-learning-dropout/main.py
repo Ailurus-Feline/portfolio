@@ -76,6 +76,41 @@ def get_cols(df: pd.DataFrame) -> tuple[list[str], list[str]]:
 
 
 # =========================================================
+# Step 0 — Initial Distribution Snapshot
+# - quick sanity check on raw data distribution
+# =========================================================
+def show(s: pd.DataFrame) -> None: 
+    tmp_col = s["Completed"].value_counts()
+    _, ax = plt.subplots(figsize=FIG_SIZE)
+    bars = ax.bar(tmp_col.index, tmp_col.values)
+    ax.bar_label(bars)
+    ax.set_title("Completion Distribution")
+    plt.show()
+
+    numerics = s.select_dtypes(include=["int64", "float64"]).columns
+    s[numerics].hist(bins=15, figsize=FIG_SIZE)
+    plt.suptitle("Numerical Features Distribution")
+    plt.tight_layout()
+    plt.show()
+
+    for l in s.select_dtypes(exclude=["int64", "float64"]).columns:
+        if s[l].nunique() > 10:
+            continue
+        if l == "Completed":
+            continue
+
+        tmp_col = s[l].value_counts()
+        _, ax = plt.subplots(figsize=FIG_SIZE)
+        bars = ax.bar(tmp_col.index, tmp_col.values)
+        ax.bar_label(bars)
+        ax.set_title(l + " Distribution")
+        plt.show()
+
+show(df_completion)
+
+
+
+# =========================================================
 # Step 1 — Structural Cleaning
 # - remove duplicates
 # - infer types (numeric / datetime)
@@ -186,33 +221,12 @@ num_cols, str_cols = get_cols(train_df)
 
 
 # =========================================================
-# Step 3 — Exploratory Analysis (EDA)
+# Step 3 — Quick Distribution Check
+# - visualize target and feature distributions
+# - used for sanity check
 # =========================================================
-tmp_col = train_df["Completed"].value_counts()
-fig, ax = plt.subplots(figsize=FIG_SIZE)
-bars = ax.bar(tmp_col.index, tmp_col.values)
-ax.bar_label(bars)
-ax.set_title("Completion Distribution")
-plt.show()
 
-numerics = train_df.select_dtypes(include=["int64", "float64"]).columns
-train_df[numerics].hist(bins=15, figsize=FIG_SIZE)
-plt.suptitle("Numerical Features Distribution")
-plt.tight_layout()
-plt.show()
-
-for l in str_cols:
-    if train_df[l].nunique() > 10:
-        continue
-    if l == "Completed":
-        continue
-
-    tmp_col = train_df[l].value_counts()
-    fig, ax = plt.subplots(figsize=FIG_SIZE)
-    bars = ax.bar(tmp_col.index, tmp_col.values)
-    ax.bar_label(bars)
-    ax.set_title(l + " Distribution")
-    plt.show()
+show(train_df)
 
 
 
