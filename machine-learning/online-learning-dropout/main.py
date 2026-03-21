@@ -53,7 +53,7 @@ num_cols = []
 str_cols = []
 id_cols = []
 
-def get_cols(df):
+def get_cols(df: pd.DataFrame) -> tuple[list[str], list[str]]:
     """
     Split dataframe columns into numeric and non-numeric.
 
@@ -184,7 +184,7 @@ test_df.to_csv(f"{COMPLETION_DIR}/Test_Cleaned.csv", index=False)
 num_cols, str_cols = get_cols(train_df)
 
 
-'''
+
 # =========================================================
 # Step 3 — Exploratory Analysis (EDA)
 # =========================================================
@@ -213,13 +213,13 @@ for l in str_cols:
     ax.bar_label(bars)
     ax.set_title(l + " Distribution")
     plt.show()
-'''
+
 
 
 # =========================================================
 # Step 4 — Feature Scaling and Encoding Rules
 # =========================================================
-def which_distribution(col):
+def which_distribution(col: pd.Series) -> str:
     """
     Classify numeric columns by value range and empirical distribution.
     """
@@ -254,7 +254,7 @@ def which_distribution(col):
     
     return "general"
 
-def which_card(col):
+def which_card(col: pd.Series) -> str:
     """
     Classify categorical columns by cardinality level.
     """
@@ -276,7 +276,7 @@ for l in num_cols:
     distr = which_distribution(s)
     print(f"Train {l} Numeric Distribution: {distr}")
     
-    def get_range(s):
+    def get_range(s: pd.Series) -> tuple[float, float]:
         """
         Compute IQR-based clipping bounds.
         """
