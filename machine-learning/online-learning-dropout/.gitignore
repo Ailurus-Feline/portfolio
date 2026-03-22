@@ -7,3 +7,4 @@ figures/*
 .DS_Store
 kaggle.json
 __pycache__/
+.vscode/
