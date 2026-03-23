@@ -1,0 +1,10 @@
+data/*
+!data/.gitkeep
+
+figures/*
+!figures/.gitkeep
+
+.DS_Store
+kaggle.json
+__pycache__/
+.vscode/
