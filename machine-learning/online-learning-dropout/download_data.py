@@ -1,4 +1,5 @@
 import subprocess
+import shutil
 from pathlib import Path
 
 DATASETS = [
@@ -25,15 +26,14 @@ def download_dataset(dataset: str):
     )
 
 
-def main():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    for ds in DATASETS:
-        download_dataset(ds)
+if DATA_DIR.exists():
+    shutil.rmtree(DATA_DIR)
 
-    print("\nAll datasets downloaded successfully.")
-    print(f"Files saved in: {DATA_DIR}")
+(DATA_DIR := DATA_DIR / "Raw").mkdir(parents=True, exist_ok=True)
 
+for ds in DATASETS:
+    download_dataset(ds)
 
-if __name__ == "__main__":
-    main()
+print("\nAll datasets downloaded successfully.")
+print(f"Files saved in: {DATA_DIR}")
