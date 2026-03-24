@@ -56,7 +56,7 @@ def load_data(name: str, file: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     
     init_df(df, name, file_DIR)
-    print(f"{df._name} :", df.shape)
+    print(f"{df._name} shape :", df.shape)
 
     return df
 
@@ -670,7 +670,7 @@ def feature_rank(s: pd.DataFrame) -> list[str]:
 
     # class-wise mean
     group_mean = s.groupby(s._label)[num_col].mean()
-    print(f"\n\n\n{s._name} Group Mean: {group_mean}")
+    print(f"\n\n\n{s._name} Group Mean: \n{group_mean}")
 
     std = s[num_col].std()
 
@@ -683,6 +683,8 @@ def feature_rank(s: pd.DataFrame) -> list[str]:
         "Std": std,
         "Std_Delta": delta
     }).sort_values(by="Std_Delta", ascending=False)
+    print(f"\n\n\n{s._name} Feature Contribution: \n{num_df["Std_Delta"].T}")
+
 
     # filter weak features
     feature = num_df[num_df["Std_Delta"] > 0.05].index.to_list()
