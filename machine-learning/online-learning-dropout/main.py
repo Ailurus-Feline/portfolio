@@ -3,6 +3,7 @@ import pandas as pd
 import pandas.api.types as ptypes
 import numpy as np
 
+from IPython.display import display
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -24,7 +25,7 @@ RATIO = 0.85        # threshold for type inference & distribution identification
 
 
 # =========================================================
-# Data Loading
+# Data Utils
 # =========================================================
 
 def init_df(s: pd.DataFrame, name: str, dir:str, label:str = None) -> None:
@@ -64,12 +65,13 @@ def save_data(s: pd.DataFrame, status: str = '') -> None:
     Save DataFrame with a status suffix.
 
     Parameters:
-        s (DataFrame): dataset
+        s (DataFrame)
         status (str): suffix tag
     """
     # reset index before saving
-    s.reset_index(drop=True, inplace=True)
-    s.to_csv(f"{s._dir}/{s._name}_{status}.csv", index=False)
+    if status:
+      status = '_' + status
+    s.to_csv(f"{s._dir}/{s._name}{status}.csv", index=False)
 
 
 # =========================================================
@@ -86,6 +88,29 @@ df_usage._label = "Category"
 
 dfs = [df_completion, df_consumption, df_usage]
 
+
+# =========================================================
+# Preview datasets
+# =========================================================
+
+def preview_df(s: pd.DataFrame, n: int = 5) -> None:
+    """
+    Preview DataFrame with basic structure and sample rows.
+
+    Parameters:
+        s (DataFrame)
+        n (int): number of rows to display
+    """
+    print(f"\n========== {s._name} Dataset ==========")
+    print("Shape: ", s.shape)
+    print("\nColumns:")
+    print(s.columns.tolist())
+    print("\nFirst few rows:")
+    display(s.head(n))
+
+
+for df in dfs:
+    preview_df(df)
 
 # =========================================================
 # Column Type Recognition
@@ -239,6 +264,9 @@ train_df, test_df = train_test_split(
 init_df(train_df, "Train", DATA_DIR / "Processed" / "Train", df_completion._label)
 init_df(test_df, "Test", DATA_DIR / "Processed" / "Test", df_completion._label)
 
+save_data(train_df)
+save_data(test_df)
+
 
 
 # =========================================================
@@ -305,7 +333,7 @@ removena(df_usage)
 
 # align test columns with train
 test_df.drop(columns=test_df.columns.difference(train_df.columns), inplace=True)
-removena(test_df)
+test_df.dropna(axis=0, how="all", inplace=True)
 
 save_data(train_df, "No_NA")
 save_data(test_df, "No_NA")
@@ -356,7 +384,7 @@ def which_distribution(l: pd.Series) -> str:
         return "discrete"
         
     if skew > 1:
-        return "long_tail"
+        return "right_skewed"
     
     if skew > -0.5 and skew < 0.5:
         return "normal"
@@ -379,7 +407,7 @@ def which_card(l: pd.Series) -> str:
 
 def get_range(s: pd.Series) -> tuple[float, float]:
     """
-    Compute IQR-based clipping bounds.
+    Compute IQR-based clipping bounds with Tukey's fences.
     """
     Q1 = s.quantile(0.25)
     Q3 = s.quantile(0.75)
@@ -450,8 +478,8 @@ def scale(s: pd.DataFrame, map: dict[str, tuple] = None) -> dict[str, tuple]:
             s[l] = col.clip(lower=0)
             continue
         
-        # long-tail stabilization
-        if distr == "long_tail":
+        # right_skewed stabilization
+        if distr == "right_skewed":
             col_log = np.log1p(col.clip(lower=0))
             _, upper = get_range(col_log)
             scalemap[l] = (0, upper, "log")
@@ -541,7 +569,7 @@ for i in dfs:
 # =========================================================
 # Step 4 — Feature Engineering
 # - remove non-informative columns
-# - remove relevant columns
+# - remove redundant columns
 # =========================================================
 
 def drop_constant(s: pd.DataFrame) -> pd.DataFrame:
@@ -559,7 +587,7 @@ drop_constant(df_consumption)
 drop_constant(df_usage)
 
 
-def drop_relevant(s: pd.DataFrame) -> pd.DataFrame:
+def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
     """
     Remove redundant features.
     """
@@ -588,17 +616,17 @@ def drop_relevant(s: pd.DataFrame) -> pd.DataFrame:
                 continue
 
     redundant_col = list(redundant_col)
-    print(f"\n\n\n{s._name} Relevant Columns: {redundant_col}")
+    print(f"\n\n\n{s._name} Redundant Columns: {redundant_col}")
     s.drop(columns=redundant_col, inplace=True)
     
     return s
 
-drop_relevant(train_df)
+drop_redundant(train_df)
 
 # apply to other df
 test_df.drop(columns=test_df.columns.difference(train_df.columns), inplace=True)
-drop_relevant(df_consumption)
-drop_relevant(df_usage)
+drop_redundant(df_consumption)
+drop_redundant(df_usage)
 
 save_data(train_df, "Dropped")
 save_data(test_df, "Dropped")
