@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 
 FIG_SIZE = (18, 7)  # default plot size
-RATIO = 0.85        # threshold for type inference & high-card detection
+RATIO = 0.85        # threshold for type inference & distribution identification
 
 
 # =========================================================
