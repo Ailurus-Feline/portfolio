@@ -9,8 +9,11 @@ import seaborn as sns
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from sklearn.preprocessing import StandardScaler
+
 
 
 # =========================================================
@@ -794,6 +797,7 @@ sns.heatmap(
 ax.set_xlabel("Predicted")
 ax.set_ylabel("Actual")
 ax.set_title("Confusion Matrix")
+fig.canvas.manager.set_window_title("Logistic Regression")
 plt.show()
 
 
@@ -808,3 +812,156 @@ print(coef_df.head(10))
 
 print("\nTop Negative Features:")
 print(coef_df.tail(10))
+
+
+
+# =========================================================
+# Step 11 — Advanced Model (Random Forest)
+# =========================================================
+
+# initialize model
+rf_model = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=10,
+    min_samples_split=5,
+    min_samples_leaf=2,
+    class_weight="balanced",
+    random_state=42,
+    n_jobs=-1
+)
+
+# train
+rf_model.fit(X_train_feature, y_train)
+
+
+
+# =========================================================
+# Step 12 — Prediction & Evaluation (RF)
+# =========================================================
+
+# Prediction
+y_pred_rf = rf_model.predict(X_test_feature)
+
+# Evaluation
+acc_rf = accuracy_score(y_test, y_pred_rf)
+cm_rf  = confusion_matrix(y_test, y_pred_rf)
+report_rf = classification_report(y_test, y_pred_rf)
+
+print("\n\n========== Random Forest Performance ==========")
+print(f"Accuracy: {acc_rf:.4f}")
+
+print("\nConfusion Matrix:")
+print(cm_rf)
+
+print("\nClassification Report:")
+print(report_rf)
+
+
+
+# =========================================================
+# Step 13 — Visualization & Feature Importance (RF)
+# =========================================================
+
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+sns.heatmap(
+    cm_rf,
+    annot=True,
+    fmt="d",
+    cmap="Greens",
+    xticklabels=["Not Completed", "Completed"],
+    yticklabels=["Not Completed", "Completed"],
+    ax=ax
+)
+
+ax.set_xlabel("Predicted")
+ax.set_ylabel("Actual")
+ax.set_title("Random Forest Confusion Matrix")
+fig.canvas.manager.set_window_title("Random Forest")
+plt.show()
+
+
+# Feature Importance (Random Forest)
+importance_df = pd.DataFrame({
+    "Feature": X_train_feature.columns,
+    "Importance": rf_model.feature_importances_
+}).sort_values(by="Importance", ascending=False)
+
+print("\n\nTop Important Features (RF):")
+print(importance_df.head(10))
+
+
+
+# =========================================================
+# Step 14 — Advanced Model (XGBoost)
+# =========================================================
+
+# initialize model
+xgb_model = XGBClassifier(
+    n_estimators=500,
+    learning_rate=0.03,
+    max_depth=6,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    scale_pos_weight=1,
+    random_state=42,
+    eval_metric="logloss",
+    n_jobs=-1
+)
+
+# train
+xgb_model.fit(X_train_feature, y_train)
+
+
+
+# =========================================================
+# Step 15 — Prediction & Evaluation (XGBoost)
+# =========================================================
+
+# Prediction
+y_pred_xgb = xgb_model.predict(X_test_feature)
+
+# Evaluation
+acc_xgb = accuracy_score(y_test, y_pred_xgb)
+cm_xgb  = confusion_matrix(y_test, y_pred_xgb)
+report_xgb = classification_report(y_test, y_pred_xgb)
+
+print("\n\n========== XGBoost Performance ==========")
+print(f"Accuracy: {acc_xgb:.4f}")
+
+print("\nConfusion Matrix:")
+print(cm_xgb)
+
+print("\nClassification Report:")
+print(report_xgb)
+
+
+
+# =========================================================
+# Step 16 — Visualization & Feature Importance (XGB)
+# =========================================================
+
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+sns.heatmap(
+    cm_xgb,
+    annot=True,
+    fmt="d",
+    cmap="Oranges",
+    xticklabels=["Not Completed", "Completed"],
+    yticklabels=["Not Completed", "Completed"],
+    ax=ax
+)
+
+ax.set_xlabel("Predicted")
+ax.set_ylabel("Actual")
+ax.set_title("XGBoost Confusion Matrix")
+plt.show()
+
+
+# Feature Importance (XGBoost)
+importance_df_xgb = pd.DataFrame({
+    "Feature": X_train_feature.columns,
+    "Importance": xgb_model.feature_importances_
+}).sort_values(by="Importance", ascending=False)
+
+print("\n\nTop Important Features (XGB):")
+print(importance_df_xgb.head(10))
