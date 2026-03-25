@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 
 FIG_SIZE = (18, 7)  # default plot size
-TOP_K = 10          # top features retained after ranking
 RATIO = 0.85        # threshold for type inference & high-card detection
 
 
