@@ -1,8 +1,8 @@
-import engine.GameEngine;
+import engine.BattleEngine;
 
 public class Main {
     public static void main(String[] args) {
-        GameEngine engine = new GameEngine();
+        BattleEngine engine = new BattleEngine();
         engine.start();
     }
 }
