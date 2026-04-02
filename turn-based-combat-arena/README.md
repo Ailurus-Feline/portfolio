@@ -72,75 +72,36 @@ Players control a character to battle enemies using actions, items, and status e
 
 ---
 
+## Project Structure
+
+```plaintext
+turn-based-combat-arena/
+├── README.md
+├── .gitignore
+│
+├── src/
+│   ├── Main.java
+│
+│   ├── engine/
+│   ├── character/
+│   ├── action/
+│   ├── skill/
+│   ├── effect/
+│   ├── item/
+│   ├── battle/
+│   ├── factory/
+│   ├── ui/
+│   ├── util/
+│   └── exception/
+│
+└── docs/
+    ├── uml_class_diagram.png
+    └── uml_sequence_diagram.png
+```
+
+---
+
 ## Architecture
 
-```
-combat/
-├── engine/
-├── character/
-├── action/
-├── item/
-├── effect/
-```
-
-### Key Components
-
-| Component            | Responsibility |
-|---------------------|--------------|
-| BattleEngine        | Controls battle flow |
-| TurnOrderStrategy   | Determines turn sequence |
-| Combatant           | Base abstraction |
-| Player / Enemy      | Combat roles |
-| Action              | Behaviors |
-| StatusEffect        | Persistent effects |
-| Item                | Consumables |
-
----
-
-## Design Principles (SOLID)
-
-- SRP: Each class has one responsibility  
-- OCP: Extend without modifying core logic  
-- LSP: Player/Enemy interchangeable  
-- ISP: Small interfaces  
-- DIP: Depend on abstractions  
-
----
-
-## Design Patterns
-
-- Strategy Pattern (Turn order)  
-- Polymorphism (Combatant behavior)  
-- Composition (Status effects)  
-
----
-
-## How to Run
-
-Compile:
-javac -d out src/combat/Main.java
-
-Run:
-java -cp out combat.Main
-
----
-
-## Extensibility
-
-- Add new characters
-- Add new actions
-- Add new items
-- Replace turn strategy
-
----
-
-## Notes
-
-- CLI-based implementation  
-- Focus on software architecture  
-
----
-
-## Author
-
-Course Project (Software Design & OOP)
+Layered Design:
+UI (CLI) → Engine → Domain (Character / Action / Effect / Item)

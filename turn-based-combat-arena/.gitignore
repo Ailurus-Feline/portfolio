@@ -1,18 +1,10 @@
-# Compiled files
 *.class
-
-# Build directories
-out/
-target/
-build/
-
-# IDE
-.idea/
-.vscode/
-*.iml
-
-# OS
-.DS_Store
-
-# Logs
 *.log
+/out/
+/build/
+/target/
+.vscode/
+.idea/
+*.iml
+.DS_Store
+*.tmp
