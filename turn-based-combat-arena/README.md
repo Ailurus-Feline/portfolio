@@ -16,39 +16,40 @@ Players control a character to battle enemies using actions, items, and status e
 
 ### Core Gameplay
 - Turn-based combat system
-- Speed-based turn order
-- Multiple enemy waves (including backup spawn)
+- **Speed-based turn order (higher speed acts first)**
+- Multiple enemy waves (**with conditional backup spawn**)
 - Clear win/loss conditions (no draw scenario)
+- Status effects processed at **turn start**
 
 ### Player Types
 - **Warrior**
   - High HP and defense  
-  - Special Skill: *Shield Bash* (damage + stun)
+  - Special Skill: *Shield Bash* (damage + stun for 2 turns)
 
 - **Wizard**
   - High attack  
-  - Special Skill: *Arcane Blast* (AOE + scaling attack)
+  - Special Skill: *Arcane Blast* (AOE + scaling attack on kill)
 
 ### Enemy Types
 - Goblin
 - Wolf
 
 ### Actions
-- Basic Attack
-- Defend
-- Use Item
-- Special Skill (with cooldown)
+- Basic Attack (damage = attack - effective defense)
+- Defend (+10 defense for 2 turns)
+- Use Item (consumes item after use)
+- Special Skill (with 3-turn cooldown)
 
 ### Items
-- Potion (healing)
-- Power Stone (free skill usage)
-- Smoke Bomb (temporary invulnerability)
+- Potion (healing +100 HP)
+- Power Stone (free skill usage without cooldown consumption)
+- Smoke Bomb (temporary invulnerability for 2 turns)
 
 ### Status Effects
-- Stun
-- Defense Buff
-- Smoke Bomb Invulnerability
-- Arcane Scaling Buff
+- Stun (skip turn)
+- Defense Buff (+10 defense)
+- Smoke Bomb Invulnerability (immune to damage)
+- Arcane Scaling Buff (permanent attack increase on kill)
 
 ---
 
@@ -56,7 +57,7 @@ Players control a character to battle enemies using actions, items, and status e
 
 1. Player selects:
    - Character (Warrior / Wizard)
-   - Items
+   - Items (2 selections)
    - Difficulty level
 
 2. Game loop:
@@ -64,6 +65,7 @@ Players control a character to battle enemies using actions, items, and status e
    - Apply status effects
    - Execute actions
    - Update HP and states
+   - Reduce cooldowns
    - Check win/loss conditions
 
 3. Game ends when:
@@ -74,34 +76,27 @@ Players control a character to battle enemies using actions, items, and status e
 
 ## Project Structure
 
-```plaintext
-turn-based-combat-arena/
-├── README.md
-├── .gitignore
-│
-├── src/
-│   ├── Main.java
-│
-│   ├── engine/
-│   ├── character/
-│   ├── action/
-│   ├── skill/
-│   ├── effect/
-│   ├── item/
-│   ├── battle/
-│   ├── factory/
-│   ├── ui/
-│   ├── util/
-│   └── exception/
-│
-└── docs/
-    ├── uml_class_diagram.png
-    └── uml_sequence_diagram.png
-```
+    turn-based-combat-arena/
+    ├── README.md
+    ├── .gitignore
+    │
+    ├── src/
+    │   ├── Main.java
+    │   │
+    │   ├── engine/
+    │   ├── combat/
+    │   ├── action/
+    │   ├── effect/
+    │   ├── item/
+    │   └── ui/
+    │
+    └── docs/
+        ├── uml_class_diagram.png
+        └── uml_sequence_diagram.png
 
 ---
 
 ## Architecture
 
 Layered Design:
-UI (CLI) → Engine → Domain (Character / Action / Effect / Item)
+UI (CLI) → Engine → Domain (Combat / Action / Effect / Item)
