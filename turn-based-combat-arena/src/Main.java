@@ -1,8 +1,10 @@
 import engine.BattleEngine;
+import ui.GameUI;
 
 public class Main {
     public static void main(String[] args) {
-        BattleEngine engine = new BattleEngine();
-        engine.start();
+        GameUI ui = new GameUI();
+        BattleEngine engine = new BattleEngine(ui);
+        engine.startGame();
     }
 }
