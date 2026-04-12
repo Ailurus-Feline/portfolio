@@ -7,25 +7,18 @@ import ui.GameUI;
 
 import java.util.List;
 
+/**
+ * Item that triggers player's special skill without consuming cooldown.
+ */
 public class PowerStone implements Item {
+
     @Override
     public void use(Player player, List<Combatant> enemies, GameUI ui) {
         SpecialSkillAction skillAction = new SpecialSkillAction();
-        int curCooldown = player.getCooldown();
-        skillAction.execute(player, null, player, enemies, ui);
-        if (player.getCooldown() != curCooldown) {
-            restoreCooldown(player, curCooldown);
-        }
-        ui.printPowerStoneUsed(player);
-    }
 
-    private void restoreCooldown(Player player, int curCooldown) {
-        try {
-            java.lang.reflect.Field field = Player.class.getDeclaredField("cooldown");
-            field.setAccessible(true);
-            field.setInt(player, curCooldown);
-        } catch (Exception ignored) {
-        }
+        skillAction.execute(player, null, player, enemies, ui, false);
+
+        ui.printPowerStoneUsed(player);
     }
 
     @Override
