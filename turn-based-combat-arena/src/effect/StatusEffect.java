@@ -2,7 +2,13 @@ package effect;
 
 import combat.Combatant;
 
+/**
+ * Base class for all status effects.
+ *
+ * Defines basic methods for status effect behavior.
+ */
 public abstract class StatusEffect {
+
     private final String name;
     private int duration;
 
@@ -17,10 +23,16 @@ public abstract class StatusEffect {
     public void expire(Combatant target) {
     }
 
+    /**
+     * returns true if this effect prevents the target from acting
+     */
     public boolean freeze() {
         return false;
     }
 
+    /**
+     * returns true if this effect has damage immunity
+     */
     public boolean immune() {
         return false;
     }
