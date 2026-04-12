@@ -6,7 +6,13 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/**
+ * Base class for all combat participants.
+ *
+ * Maintains core attributes (HP, attack, defense, speed) and manages status effects.
+ */
 public abstract class Combatant {
+
     private final String name;
     private final int maxHp;
     private int hp;
@@ -25,6 +31,11 @@ public abstract class Combatant {
         this.statusEffects = new ArrayList<>();
     }
 
+    /**
+     * Applies all status effects at the start of the turn.
+     *
+     * Each effect triggers its logic, reduces duration, and is removed if expired.
+     */
     public void turnStart() {
         Iterator<StatusEffect> iterator = statusEffects.iterator();
         while (iterator.hasNext()) {
@@ -63,6 +74,9 @@ public abstract class Combatant {
         return false;
     }
 
+    /**
+     * Calculates defense including all active effects.
+     */
     public int getEffectiveDefense() {
         int total = baseDefense;
         for (StatusEffect effect : statusEffects) {
