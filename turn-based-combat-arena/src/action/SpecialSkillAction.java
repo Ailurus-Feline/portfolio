@@ -16,16 +16,16 @@ import java.util.List;
  * Wizard: AOE + permanent attack boost on kill.
  * Skill is subject to cooldown.
  */
-public class SpecialSkillAction implements Action {
+public class SpecialSkillAction implements CooldownAction {
 
     @Override
-    public void execute(Combatant actor, Combatant directTarget, Player player, List<Combatant> enemies, GameUI ui) {
+    public void execute(Combatant actor, Combatant directTarget, Player player, List<Combatant> enemies, GameUI ui, Boolean ifCooldown) {
 
         if (!(actor instanceof Player)) {
             return;
         }
 
-        if (!player.canUseSkill()) {
+        if (ifCooldown && !player.canUseSkill()) {
             ui.printSkillOnCooldown(player);
             return;
         }
