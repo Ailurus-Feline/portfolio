@@ -21,17 +21,46 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
+/**
+ * Game user interface.
+ *
+ * Responsible for:
+ * - player input
+ * - battle information display
+ * - remembering previous game settings
+ * - loading screen display
+ */
 public class GameUI {
     private final Scanner scanner;
     private int selectedLevel;
     private boolean backupSpawned;
 
+    private Player lastPlayerTemplate;
+    private List<Item> lastItems;
+    private int lastLevel;
+
+    /**
+     * Replay menu choice after battle.
+     *
+     * 1 = replay with same settings
+     * 2 = start with new settings
+     * 3 = exit
+     */
+    private int replayChoice;
+
     public GameUI() {
         this.scanner = new Scanner(System.in);
         this.selectedLevel = 1;
         this.backupSpawned = false;
+        this.lastPlayerTemplate = null;
+        this.lastItems = new ArrayList<>();
+        this.lastLevel = 1;
+        this.replayChoice = 3;
     }
 
+    /**
+     * Saves the chosen class as replay template.
+     */
     public Player choosePlayer() {
         System.out.println("=== Turn-Based Combat Arena ===");
         System.out.println("1. Warrior (HP 260, ATK 40, DEF 20, SPD 30)");
@@ -40,9 +69,11 @@ public class GameUI {
             System.out.print("Choose player: ");
             String input = scanner.nextLine();
             if ("1".equals(input)) {
+                lastPlayerTemplate = new Warrior();
                 return new Warrior();
             }
             if ("2".equals(input)) {
+                lastPlayerTemplate = new Wizard();
                 return new Wizard();
             }
             System.out.println("Invalid choice.");
@@ -50,9 +81,12 @@ public class GameUI {
     }
 
     public void chooseItems(Player player) {
+        lastItems = new ArrayList<>();
         System.out.println("Choose 2 items:");
         for (int i = 0; i < 2; i++) {
-            player.addItem(createItemByChoice(promptItemChoice(i + 1)));
+            Item item = createItemByChoice(itemChoice(i + 1));
+            player.addItem(item);
+            lastItems.add(copyItem(item));
         }
     }
 
@@ -67,13 +101,70 @@ public class GameUI {
             String input = scanner.nextLine();
             if ("1".equals(input) || "2".equals(input) || "3".equals(input)) {
                 selectedLevel = Integer.parseInt(input);
-                return spawnInitialEnemies();
+                lastLevel = selectedLevel;
+                List<Combatant> enemies = spawnInitialEnemies();
+                printLoadingScreen(enemies);
+                return enemies;
             }
             System.out.println("Invalid choice.");
         }
     }
 
-    private int promptItemChoice(int index) {
+    /**
+     * Prints loading screen before battle starts.
+     *
+     * Shows enemy list and their attributes.
+     */
+    public void printLoadingScreen(List<Combatant> enemies) {
+        System.out.println();
+        System.out.println("========== Loading Battle ==========");
+        System.out.println("Selected Difficulty: " + getLevelName(selectedLevel));
+        System.out.println("Enemies:");
+        for (Combatant enemy : enemies) {
+            printCombatantAttributes(enemy);
+        }
+        System.out.println("====================================");
+        System.out.println();
+    }
+
+    public boolean ifReplaySameSettings() {
+        return replayChoice == 1;
+    }
+
+    public boolean ifStartNewSettings() {
+        return replayChoice == 2;
+    }
+
+    public boolean ifExit() {
+        return replayChoice == 3;
+    }
+
+    /**
+     * Builds a fresh player using saved replay settings.
+     */
+    public Player createReplayPlayer() {
+        Player player = copyPlayer(lastPlayerTemplate);
+        for (Item item : lastItems) {
+            player.addItem(copyItem(item));
+        }
+        return player;
+    }
+
+    /**
+     * Builds fresh enemies using saved replay level.
+     */
+    public List<Combatant> createReplayEnemies() {
+        selectedLevel = lastLevel;
+        backupSpawned = false;
+        List<Combatant> enemies = spawnInitialEnemies();
+        printLoadingScreen(enemies);
+        return enemies;
+    }
+
+    /**
+     * Asks the player to choose an item.
+     */
+    private int itemChoice(int index) {
         System.out.println(index + ". Pick item:");
         System.out.println("1. Potion");
         System.out.println("2. Power Stone");
@@ -88,6 +179,9 @@ public class GameUI {
         }
     }
 
+    /**
+     * Creates an item instance based on choice number.
+     */
     private Item createItemByChoice(int choice) {
         if (choice == 1) {
             return new Potion();
@@ -98,6 +192,9 @@ public class GameUI {
         return new SmokeBomb();
     }
 
+    /**
+     * Creates initial enemies for the current selected level.
+     */
     private List<Combatant> spawnInitialEnemies() {
         List<Combatant> enemies = new ArrayList<>();
         if (selectedLevel == 1) {
@@ -114,6 +211,9 @@ public class GameUI {
         return enemies;
     }
 
+    /**
+     * Spawns backup enemies for the current selected level.
+     */
     public List<Combatant> spawnBackupEnemies() {
         List<Combatant> enemies = new ArrayList<>();
         if (selectedLevel == 2) {
@@ -131,10 +231,16 @@ public class GameUI {
         return backupSpawned;
     }
 
+    /**
+     * Marks that backup enemies have been spawned.
+     */
     public void markBackupSpawned() {
         backupSpawned = true;
     }
 
+    /**
+     * Lets the player choose an action.
+     */
     public Action chooseAction(Player player) {
         while (true) {
             System.out.println("Choose action:");
@@ -161,6 +267,9 @@ public class GameUI {
         }
     }
 
+    /**
+     * Lets the player choose a target from alive enemies.
+     */
     public Combatant chooseTarget(List<Combatant> enemies) {
         List<Combatant> alive = new ArrayList<>();
         for (Combatant enemy : enemies) {
@@ -193,6 +302,9 @@ public class GameUI {
         }
     }
 
+    /**
+     * Lets the player choose an item from inventory.
+     */
     public Item chooseItem(Player player) {
         List<Item> items = player.getInventory();
         if (items.isEmpty()) {
@@ -219,6 +331,11 @@ public class GameUI {
         }
     }
 
+    /**
+     * Displays current battle status.
+     *
+     * Includes detailed enemy attributes.
+     */
     public void displayBattleStatus(Player player, List<Combatant> enemies) {
         System.out.println();
         System.out.println("Player: " + player.getName() + " HP " + player.getHp() + "/" + player.getMaxHp()
@@ -230,7 +347,11 @@ public class GameUI {
 
         System.out.println("Enemies:");
         for (Combatant enemy : enemies) {
-            System.out.println("- " + enemy.getName() + " HP " + enemy.getHp() + "/" + enemy.getMaxHp()
+            System.out.println("- " + enemy.getName()
+                    + " HP " + enemy.getHp() + "/" + enemy.getMaxHp()
+                    + " ATK " + enemy.getAttack()
+                    + " DEF " + enemy.getEffectiveDefense()
+                    + " SPD " + enemy.getSpeed()
                     + (enemy.isAlive() ? "" : " [ELIMINATED]"));
             printEffects(enemy);
         }
@@ -246,6 +367,9 @@ public class GameUI {
         System.out.println();
     }
 
+    /**
+     * Prints active status effects of a combatant.
+     */
     private void printEffects(Combatant combatant) {
         List<StatusEffect> effects = combatant.getStatusEffects();
         if (effects.isEmpty()) {
@@ -343,19 +467,80 @@ public class GameUI {
         System.out.println();
     }
 
+    /**
+     * Shows post-game options.
+     *
+     * 1. Replay with same settings
+     * 2. Start with new settings
+     * 3. Exit
+     *
+     * Returns true if the game should continue.
+     */
     public boolean askReplaySameSettings(Player previousPlayer) {
         while (true) {
-            System.out.println("1. Replay");
-            System.out.println("2. Exit");
+            System.out.println("1. Replay with same settings");
+            System.out.println("2. Start with new settings");
+            System.out.println("3. Exit");
             System.out.print("Choice: ");
             String input = scanner.nextLine();
+
             if ("1".equals(input)) {
+                replayChoice = 1;
                 return true;
             }
             if ("2".equals(input)) {
+                replayChoice = 2;
+                return true;
+            }
+            if ("3".equals(input)) {
+                replayChoice = 3;
                 return false;
             }
             System.out.println("Invalid choice.");
         }
+    }
+
+    /**
+     * Creates a copy of a player based on class type.
+     */
+    private Player copyPlayer(Player player) {
+        if (player instanceof Warrior) {
+            return new Warrior();
+        }
+        return new Wizard();
+    }
+
+    /**
+     * Creates a fresh copy of an item based on item type.
+     */
+    private Item copyItem(Item item) {
+        if (item instanceof Potion) {
+            return new Potion();
+        }
+        if (item instanceof PowerStone) {
+            return new PowerStone();
+        }
+        return new SmokeBomb();
+    }
+
+    private String getLevelName(int level) {
+        if (level == 1) {
+            return "Easy";
+        }
+        if (level == 2) {
+            return "Medium";
+        }
+        return "Hard";
+    }
+
+    /**
+     * Prints full combatant attributes.
+     */
+    private void printCombatantAttributes(Combatant combatant) {
+        System.out.println("- " + combatant.getName()
+                + " HP " + combatant.getHp() + "/" + combatant.getMaxHp()
+                + " ATK " + combatant.getAttack()
+                + " DEF " + combatant.getEffectiveDefense()
+                + " SPD " + combatant.getSpeed());
     }
 }
