@@ -27,61 +27,88 @@ public class BattleEngine {
      * Starts the game loop.
      *
      * Repeats until player chooses to stop.
+     * Supports:
+     * - replay with same settings
+     * - start again with new settings
+     * - exit
      */
     public void startGame() {
         boolean running = true;
+
         while (running) {
             Player player = ui.choosePlayer();
             ui.chooseItems(player);
             List<Combatant> enemies = ui.chooseLevel();
 
-            int round = 1;
+            runSingleBattle(player, enemies);
 
-            while (player.isAlive() && hasAlive(enemies)) {
-                ui.printRoundHeader(round);
-                spawnBackupIfNeeded(ui, enemies);
+            boolean continueGame = ui.askReplaySameSettings(player);
 
-                List<Combatant> turnOrder = buildTurnOrder(player, enemies);
-                ui.displayBattleStatus(player, enemies);
+            while (continueGame && ui.ifReplaySameSettings()) {
+                Player replayPlayer = ui.createReplayPlayer();
+                List<Combatant> replayEnemies = ui.createReplayEnemies();
 
-                for (Combatant actor : turnOrder) {
-                    if (!actor.isAlive()) {
-                        continue;
-                    }
-
-                    actor.turnStart();
-
-                    if (!player.isAlive() || !hasAlive(enemies)) {
-                        break;
-                    }
-
-                    if (actor.isFrozen()) {
-                        ui.printSkipTurn(actor);
-                        actor.turnEnd();
-                        continue;
-                    }
-
-                    if (actor instanceof Player) {
-                        Action action = ui.chooseAction(player);
-                        action.execute(actor, null, player, enemies, ui);
-                    } else {
-                        Action action = new BasicAttack();
-                        action.execute(actor, player, player, enemies, ui);
-                    }
-
-                    actor.turnEnd();
-
-                    if (!player.isAlive() || !hasAlive(enemies)) {
-                        break;
-                    }
-                }
-
-                round++;
+                runSingleBattle(replayPlayer, replayEnemies);
+                continueGame = ui.askReplaySameSettings(replayPlayer);
             }
 
-            ui.displayGameResult(player, enemies, round - 1);
-            running = ui.askReplaySameSettings(player);
+            if (!continueGame || ui.ifExit()) {
+                running = false;
+            }
         }
+    }
+
+    /**
+     * Runs one complete battle until either:
+     * - player is defeated
+     * - all enemies are defeated
+     */
+    private void runSingleBattle(Player player, List<Combatant> enemies) {
+        int round = 1;
+
+        while (player.isAlive() && hasAlive(enemies)) {
+            ui.printRoundHeader(round);
+            spawnBackupIfNeeded(ui, enemies);
+
+            List<Combatant> turnOrder = buildTurnOrder(player, enemies);
+            ui.displayBattleStatus(player, enemies);
+
+            for (Combatant actor : turnOrder) {
+                if (!actor.isAlive()) {
+                    continue;
+                }
+
+                actor.turnStart();
+
+                if (!player.isAlive() || !hasAlive(enemies)) {
+                    break;
+                }
+
+                if (actor.isFrozen()) {
+                    ui.printSkipTurn(actor);
+                    actor.turnEnd();
+                    continue;
+                }
+
+                if (actor instanceof Player) {
+                    Action action = ui.chooseAction(player);
+                    action.execute(actor, null, player, enemies, ui);
+                } else {
+                    Action action = new BasicAttack();
+                    action.execute(actor, player, player, enemies, ui);
+                }
+
+                actor.turnEnd();
+
+                if (!player.isAlive() || !hasAlive(enemies)) {
+                    break;
+                }
+            }
+
+            round++;
+        }
+
+        ui.displayGameResult(player, enemies, round - 1);
     }
 
     /**
@@ -100,7 +127,9 @@ public class BattleEngine {
         return turnOrderStrategy.whatOrder(combatants);
     }
 
-
+    /**
+     * Returns whether at least one combatant is alive.
+     */
     private boolean hasAlive(List<Combatant> combatants) {
         for (Combatant combatant : combatants) {
             if (combatant.isAlive()) {
