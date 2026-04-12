@@ -19,7 +19,7 @@ import java.util.List;
 public class SpecialSkillAction implements CooldownAction {
 
     @Override
-    public void execute(Combatant actor, Combatant directTarget, Player player, List<Combatant> enemies, GameUI ui, Boolean ifCooldown) {
+    public void execute(Combatant actor, Combatant directTarget, Player player, List<Combatant> enemies, GameUI ui, boolean ifCooldown) {
 
         if (!(actor instanceof Player)) {
             return;
