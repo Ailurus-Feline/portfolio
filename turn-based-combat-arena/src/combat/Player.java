@@ -5,7 +5,13 @@ import item.Item;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Base class for player-controlled characters.
+ *
+ * Extends Combatant with inventory management and skill cooldown.
+ */
 public abstract class Player extends Combatant {
+
     private final List<Item> inventory;
     private int cooldown;
 
@@ -15,6 +21,9 @@ public abstract class Player extends Combatant {
         this.cooldown = 0;
     }
 
+    /**
+     * Decreases skill cooldown at end of turn.
+     */
     @Override
     public void turnEnd() {
         if (cooldown > 0) {
