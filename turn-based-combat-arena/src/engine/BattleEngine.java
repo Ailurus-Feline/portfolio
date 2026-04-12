@@ -9,6 +9,11 @@ import ui.GameUI;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Main battle engine.
+ *
+ * Handles game loop and round-based combat flow.
+ */
 public class BattleEngine {
     private final GameUI ui;
     private final TurnOrderStrategy turnOrderStrategy;
@@ -18,6 +23,11 @@ public class BattleEngine {
         this.turnOrderStrategy = new SpeedBasedTurnOrder();
     }
 
+    /**
+     * Starts the game loop.
+     *
+     * Repeats until player chooses to stop.
+     */
     public void startGame() {
         boolean running = true;
         while (running) {
@@ -40,6 +50,7 @@ public class BattleEngine {
                     }
 
                     actor.turnStart();
+
                     if (!player.isAlive() || !hasAlive(enemies)) {
                         break;
                     }
@@ -73,6 +84,11 @@ public class BattleEngine {
         }
     }
 
+    /**
+     * Builds turn order for current round.
+     *
+     * Only includes alive combatants.
+     */
     private List<Combatant> buildTurnOrder(Player player, List<Combatant> enemies) {
         List<Combatant> combatants = new ArrayList<>();
         combatants.add(player);
@@ -84,6 +100,7 @@ public class BattleEngine {
         return turnOrderStrategy.whatOrder(combatants);
     }
 
+
     private boolean hasAlive(List<Combatant> combatants) {
         for (Combatant combatant : combatants) {
             if (combatant.isAlive()) {
@@ -93,6 +110,9 @@ public class BattleEngine {
         return false;
     }
 
+    /**
+     * Spawns backup enemies if conditions are met.
+     */
     private void spawnBackupIfNeeded(GameUI ui, List<Combatant> enemies) {
         if (!ui.hasBackupSpawned() && !hasAlive(enemies)) {
             List<Combatant> backup = ui.spawnBackupEnemies();
