@@ -271,9 +271,18 @@ public class GameUI {
                 return new DefendAction();
             }
             if ("3".equals(input)) {
+                if (player.getInventory().isEmpty()) {
+                    printNoItem();
+                    continue;
+                }
                 return new UseItemAction();
             }
             if ("4".equals(input)) {
+                if (player.getCooldown() > 0) {
+                    printSkillOnCooldown(player);
+                    System.out.println();
+                    continue;
+                }
                 return new SpecialSkillAction();
             }
 
@@ -326,10 +335,6 @@ public class GameUI {
      */
     public Item chooseItem(Player player) {
         List<Item> items = player.getInventory();
-        if (items.isEmpty()) {
-            System.out.println("No items left.");
-            return null;
-        }
 
         System.out.println("Choose item:");
         for (int i = 0; i < items.size(); i++) {
@@ -339,6 +344,8 @@ public class GameUI {
         while (true) {
             System.out.print("Item: ");
             String input = scanner.nextLine();
+            System.out.println();
+
             try {
                 int index = Integer.parseInt(input) - 1;
                 if (index >= 0 && index < items.size()) {
@@ -346,7 +353,9 @@ public class GameUI {
                 }
             } catch (NumberFormatException ignored) {
             }
+
             System.out.println("Invalid choice.");
+            System.out.println();
         }
     }
 
@@ -443,8 +452,8 @@ public class GameUI {
         System.out.println(player.getName() + " uses Smoke Bomb. Enemy attacks deal 0 damage this turn and next turn.");
     }
 
-    public void printNoItemUsed() {
-        System.out.println("Item action cancelled.");
+    public void printNoItem() {
+        System.out.println("No items available. Choose again.\n");
     }
 
     public void printSkillOnCooldown(Player player) {
