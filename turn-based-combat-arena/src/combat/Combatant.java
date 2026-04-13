@@ -34,22 +34,29 @@ public abstract class Combatant {
     /**
      * Applies all status effects at the start of the turn.
      *
-     * Each effect triggers its logic, reduces duration, and is removed if expired.
+     * Each effect triggers its logic.
      */
     public void turnStart() {
+        for (StatusEffect effect : statusEffects) {
+            effect.turnStart(this);
+        }
+    }
+
+    /**
+     * Processes status effects at the end of the turn.
+     *
+     * Reduces duration and removes expired effects.
+     */
+    public void turnEnd() {
         Iterator<StatusEffect> iterator = statusEffects.iterator();
         while (iterator.hasNext()) {
             StatusEffect effect = iterator.next();
-            effect.turnStart(this);
             effect.decreaseDuration();
             if (effect.isExpired()) {
                 effect.expire(this);
                 iterator.remove();
             }
         }
-    }
-
-    public void turnEnd() {
     }
 
     public void addStatusEffect(StatusEffect effect) {
