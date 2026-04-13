@@ -68,6 +68,8 @@ public class GameUI {
         while (true) {
             System.out.print("Choose player: ");
             String input = scanner.nextLine();
+            System.out.println();
+
             if ("1".equals(input)) {
                 lastPlayerTemplate = new Warrior();
                 return new Warrior();
@@ -76,7 +78,9 @@ public class GameUI {
                 lastPlayerTemplate = new Wizard();
                 return new Wizard();
             }
-            System.out.println("Invalid choice.");
+
+            System.out.println("Invalid choice.\n");
+            System.out.println();
         }
     }
 
@@ -99,6 +103,8 @@ public class GameUI {
         while (true) {
             System.out.print("Select level: ");
             String input = scanner.nextLine();
+            System.out.println();
+
             if ("1".equals(input) || "2".equals(input) || "3".equals(input)) {
                 selectedLevel = Integer.parseInt(input);
                 lastLevel = selectedLevel;
@@ -106,7 +112,9 @@ public class GameUI {
                 printLoadingScreen(enemies);
                 return enemies;
             }
+
             System.out.println("Invalid choice.");
+            System.out.println();
         }
     }
 
@@ -125,6 +133,7 @@ public class GameUI {
         }
         System.out.println("====================================");
         System.out.println();
+        parse("start the battle!");
     }
 
     public boolean ifReplaySameSettings() {
@@ -166,16 +175,19 @@ public class GameUI {
      */
     private int itemChoice(int index) {
         System.out.println(index + ". Pick item:");
-        System.out.println("1. Potion");
-        System.out.println("2. Power Stone");
-        System.out.println("3. Smoke Bomb");
+        System.out.println("\t1. Potion");
+        System.out.println("\t2. Power Stone");
+        System.out.println("\t3. Smoke Bomb");
         while (true) {
             System.out.print("Choice: ");
             String input = scanner.nextLine();
+            System.out.println();
+
             if ("1".equals(input) || "2".equals(input) || "3".equals(input)) {
                 return Integer.parseInt(input);
             }
             System.out.println("Invalid choice.");
+            System.out.println();
         }
     }
 
@@ -250,6 +262,7 @@ public class GameUI {
             System.out.println("4. SpecialSkill");
             System.out.print("Action: ");
             String input = scanner.nextLine();
+            System.out.println();
 
             if ("1".equals(input)) {
                 return new BasicAttack();
@@ -263,7 +276,9 @@ public class GameUI {
             if ("4".equals(input)) {
                 return new SpecialSkillAction();
             }
+
             System.out.println("Invalid choice.");
+            System.out.println();
         }
     }
 
@@ -291,6 +306,8 @@ public class GameUI {
         while (true) {
             System.out.print("Target: ");
             String input = scanner.nextLine();
+            System.out.println();
+
             try {
                 int index = Integer.parseInt(input) - 1;
                 if (index >= 0 && index < alive.size()) {
@@ -298,7 +315,9 @@ public class GameUI {
                 }
             } catch (NumberFormatException ignored) {
             }
+
             System.out.println("Invalid choice.");
+            System.out.println();
         }
     }
 
@@ -497,6 +516,7 @@ public class GameUI {
                 return false;
             }
             System.out.println("Invalid choice.");
+            System.out.println(); 
         }
     }
 
@@ -542,5 +562,11 @@ public class GameUI {
                 + " ATK " + combatant.getAttack()
                 + " DEF " + combatant.getEffectiveDefense()
                 + " SPD " + combatant.getSpeed());
+    }
+
+    public void parse(String target) {
+        System.out.println("Press any key to " + target);
+        scanner.nextLine();
+        System.out.println();
     }
 }
