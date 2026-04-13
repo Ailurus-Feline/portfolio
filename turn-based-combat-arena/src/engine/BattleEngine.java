@@ -66,7 +66,7 @@ public class BattleEngine {
     private void runSingleBattle(Player player, List<Combatant> enemies) {
         int round = 1;
 
-        while (player.isAlive() && hasAlive(enemies)) {
+        while (true) {
             ui.printRoundHeader(round);
             spawnBackupIfNeeded(ui, enemies);
 
@@ -106,6 +106,12 @@ public class BattleEngine {
             }
 
             round++;
+
+            System.out.println();
+            if (!player.isAlive() || !hasAlive(enemies)) {
+                break;
+            }
+            ui.parse("enter next round!");
         }
 
         ui.displayGameResult(player, enemies, round - 1);
