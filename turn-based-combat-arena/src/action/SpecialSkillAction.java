@@ -49,7 +49,9 @@ public class SpecialSkillAction implements CooldownAction {
 
             ui.printShieldBash(player, target, damage);
 
-            player.startCooldown();
+            if (ifCooldown) {
+                player.startCooldown();
+            }
             return;
         }
 
@@ -73,7 +75,9 @@ public class SpecialSkillAction implements CooldownAction {
                 }
             }
 
-            player.startCooldown();
+            if (ifCooldown) {
+                player.startCooldown();
+            }
         }
     }
 
