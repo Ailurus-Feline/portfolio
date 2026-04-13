@@ -255,6 +255,7 @@ public class GameUI {
      */
     public Action chooseAction(Player player) {
         while (true) {
+            System.out.println();
             System.out.println("Choose action:");
             System.out.println("1. BasicAttack");
             System.out.println("2. Defend");
