@@ -108,8 +108,15 @@ public class BattleEngine {
             round++;
 
             System.out.println();
-            if (!player.isAlive() || !hasAlive(enemies)) {
+            if (!player.isAlive()) {
                 break;
+            }
+            if (!hasAlive(enemies)) {
+                spawnBackupIfNeeded(ui, enemies);
+
+                if (!hasAlive(enemies)) {
+                    break; 
+                }
             }
             ui.parse("enter next round!");
         }
