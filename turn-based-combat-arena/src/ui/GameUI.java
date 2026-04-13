@@ -100,6 +100,11 @@ public class GameUI {
         System.out.println("1. Easy   (3 Goblins)");
         System.out.println("2. Medium (1 Goblin + 1 Wolf, backup 2 Wolves)");
         System.out.println("3. Hard   (2 Goblins, backup 1 Goblin + 2 Wolves)");
+        System.out.println();
+        printCombatantAttributes(new Goblin());
+        printCombatantAttributes(new Wolf());
+        System.out.println();
+
         while (true) {
             System.out.print("Select level: ");
             String input = scanner.nextLine();
