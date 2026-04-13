@@ -23,16 +23,8 @@ public class UseItemAction implements Action {
         }
 
         Item item = ui.chooseItem(player);
-
-        // No item selected → no action
-        if (item == null) {
-            ui.printNoItemUsed();
-            return;
-        }
-
         item.use(player, enemies, ui);
 
-        // Remove item after use
         player.getInventory().remove(item);
     }
 
