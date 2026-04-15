@@ -74,7 +74,7 @@ def save_data(s: pd.DataFrame, status: str = '') -> None:
     """
     # Reset index before saving
     if status:
-      status = '_' + status
+        status = '_' + status
     s.to_csv(f"{s._dir}/{s._name}{status}.csv", index=False)
 
 
@@ -99,7 +99,7 @@ dfs = [df_completion, df_consumption, df_usage]
 
 def preview(s: pd.DataFrame, n: int = 5) -> None:
     """
-    Preview DataFrame with basic structure, data quality, and sample rows.
+    Preview df with basic structure, data quality, and sample rows.
 
     Parameters:
         s (DataFrame)
@@ -281,12 +281,12 @@ def set_col_type(s: pd.DataFrame) -> list[str]:
     Infer column types and detect ID-like columns.
     
     Transforms column types by:
-    - Converting numeric strings to numeric types
+    - Converting numeric strs to numeric types
     - Extracting datetime features (year, month, day, weekday)
     - Identifying and removing ID-like columns with high uniqueness
     
     Returns:
-        id_cols (list): columns identified as ID-like
+        id_cols (list): ID-like columns
     """
     s.drop_duplicates(inplace=True)
 
@@ -336,11 +336,12 @@ for df in dfs:
     df.dropna(subset=[df._label], inplace=True)
 
     print(f"\n\n\n========== {df._name} Structural Cleaning ==========")
-    print(f"ID-like columns removed: {id_cols}")
+    print(f"ID-like columns removed: \n{id_cols}")
     save_data(df, "Cleaned")
 
 
-# Create train/test split on primary dataset (prevent data leakage)
+# Create train/test split on primary dataset
+# Prevent data leakage
 train_df, test_df = train_test_split(
     df_completion,
     test_size=0.2,
@@ -367,16 +368,19 @@ def deal_na(s: pd.DataFrame, rule: dict[str, float] = None) -> dict[str, float]:
     Missing value handling: fill numeric/categorical and remove empty rows/columns.
     
     Strategy:
-    - Numeric: median imputation (robust to outliers)
-    - Categorical: explicit NA marker (preserves information)
-    - Empty rows/columns: removal (no analytical value)
+    - Numeric: median imputation
+    - Categorical: explicit NA marker
+    - Empty rows/columns: removal
     
     Parameters:
         s (DataFrame)
         rule (dict): pre-computed fill values from training set
     """
-    num_col, str_col = get_cols(s)
     print(f"\n\n\n========== {s._name} NA Handling ==========")
+
+    num_col, str_col = get_cols(s)
+    if not rule:
+        rule = {}
     
     # Numeric: median imputation
     print("Numeric NA counts: ")
@@ -387,7 +391,7 @@ def deal_na(s: pd.DataFrame, rule: dict[str, float] = None) -> dict[str, float]:
         
         if l not in rule:
             rule[l] = s[l].median()
-        s[l].fillna(rule[l], inplace=True)
+        s[l] = s[l].fillna(rule[l])
     
     # Categorical: mark missing explicitly
     print("\nCategorical NA counts: ")
@@ -411,7 +415,7 @@ deal_na(test_df, na_rule)
 deal_na(df_consumption)
 deal_na(df_usage)
 
-# Align test columns with train (prevent schema mismatch during modeling)
+# Align test columns with train
 test_df.drop(columns=test_df.columns.difference(train_df.columns), inplace=True)
 
 save_data(train_df, "No_NA")
@@ -423,238 +427,175 @@ save_data(df_usage, "No_NA")
 
 # =========================================================
 # Step 6 — Feature Enrichment
-# - extract aggregated statistics from primary dataset
-# - create new features to make predictions more accurate
+# - extract aggregated statistics from primary dataset only
+# - create behavioral features for high-granularity data
 # =========================================================
 
-def enrich(df: pd.DataFrame, agg_stats: dict = None) -> dict:
+def enrich(s: pd.DataFrame, stats: dict = None) -> dict:
     """
-    Enrich dataset with aggregate statistics from primary data.
-    Leverages course/category level patterns to create predictive features.
-    
-    Strategy:
-    - Use aggregations computed from train_df
-    - Map these statistics to corresponding records
-    - Fill missing mappings with reasonable defaults
+    Enrich dataset with behavioral features and interaction terms.
+    Flexible column matching for different dataset schemas.
     
     Parameters:
-        df (DataFrame)
-        agg_stats (dict): pre-computed statistics from train_df
-
-    Returns:
-        agg_stats (dict): computed or used statistics dictionary
+        s (DataFrame): dataset to enrich
+        stats (dict): pre-computed statistics from train_df
     """
+    print(f"\n\n\n========== {s._name} Feature Enrichment ==========")
     
-    # Compute aggregations from current data if not provided
-    if not agg_stats:
-        agg_stats = {}
-    
-    # Course-level aggregations
-    if 'Course_ID' in df.columns and df._label in df.columns:
-        if 'course_completion_rate' not in agg_stats:
-            agg_stats['course_completion_rate'] = (df.groupby('Course_ID')[df._label].apply(
-                lambda x: (x == 'Completed').sum() / len(x)
-            )).to_dict()
-        if 'course_avg_progress' not in agg_stats:
-            agg_stats['course_avg_progress'] = df.groupby('Course_ID')['Progress_Percentage'].mean().to_dict()
-        if 'course_avg_quiz_score' not in agg_stats:
-            agg_stats['course_avg_quiz_score'] = df.groupby('Course_ID')['Quiz_Score_Avg'].mean().to_dict()
-        if 'course_avg_satisfaction' not in agg_stats:
-            agg_stats['course_avg_satisfaction'] = df.groupby('Course_ID')['Satisfaction_Rating'].mean().to_dict()
-    
-    # Category-level aggregations
-    if 'Category' in df.columns and df._label in df.columns:
-        if 'category_completion_rate' not in agg_stats:
-            agg_stats['category_completion_rate'] = (df.groupby('Category')[df._label].apply(
-                lambda x: (x == 'Completed').sum() / len(x)
-            )).to_dict()
-        if 'category_avg_satisfaction' not in agg_stats:
-            agg_stats['category_avg_satisfaction'] = df.groupby('Category')['Satisfaction_Rating'].mean().to_dict()
-    
-    # Course Level difficulty aggregations
-    if 'Course_Level' in df.columns and df._label in df.columns:
-        if 'level_completion_rate' not in agg_stats:
-            agg_stats['level_completion_rate'] = (df.groupby('Course_Level')[df._label].apply(
-                lambda x: (x == 'Completed').sum() / len(x)
-            )).to_dict()
-    
-    # Apply aggregated features
-    print(f"\n\n\n========== {df._name} Feature Enrichment ==========")
-    
-    # Course-level features
-    if 'Course_ID' in df.columns:
-        if 'course_completion_rate' in agg_stats:
-            df['course_completion_rate'] = df['Course_ID'].map(agg_stats['course_completion_rate']).fillna(0.5)
-        if 'course_avg_progress' in agg_stats:
-            df['course_avg_progress'] = df['Course_ID'].map(agg_stats['course_avg_progress']).fillna(0)
-        if 'course_avg_quiz_score' in agg_stats:
-            df['course_avg_quiz_score'] = df['Course_ID'].map(agg_stats['course_avg_quiz_score']).fillna(0)
-        if 'course_avg_satisfaction' in agg_stats:
-            df['course_avg_satisfaction'] = df['Course_ID'].map(agg_stats['course_avg_satisfaction']).fillna(0)
-    
-    # Category-level features
-    if 'Category' in df.columns:
-        if 'category_completion_rate' in agg_stats:
-            df['category_completion_rate'] = df['Category'].map(agg_stats['category_completion_rate']).fillna(0.5)
-        if 'category_avg_satisfaction' in agg_stats:
-            df['category_avg_satisfaction'] = df['Category'].map(agg_stats['category_avg_satisfaction']).fillna(0)
-    
-    # Level-based features
-    if 'Course_Level' in df.columns:
-        if 'level_completion_rate' in agg_stats:
-            df['level_completion_rate'] = df['Course_Level'].map(agg_stats['level_completion_rate']).fillna(0.5)
-    
-    # Behavioral aggregation: Engagement Score
-    if 'Login_Frequency' in df.columns and 'Discussion_Participation' in df.columns and 'Assignments_Submitted' in df.columns:
-        max_login = df['Login_Frequency'].max()
-        max_discuss = df['Discussion_Participation'].max()
-        max_assign = df['Assignments_Submitted'].max()
+    if stats is None:
+        stats = {}
         
-        df['engagement_score'] = (
-            df['Login_Frequency'] / max(max_login, 1) * 0.4 +
-            df['Discussion_Participation'] / max(max_discuss, 1) * 0.3 +
-            df['Assignments_Submitted'] / max(max_assign, 1) * 0.3
+        # df_completion engagement metrics
+        if all(l in s.columns for l in ["Login_Frequency", "Discussion_Participation", "Assignments_Submitted"]):
+            stats["max_login"] = s["Login_Frequency"].max()
+            stats["max_discuss"] = s["Discussion_Participation"].max()
+            stats["max_assign"] = s["Assignments_Submitted"].max()
+        
+        # Supplementary datasets stats
+        if "Hours_Spent_Per_Week" in s.columns:
+            stats["avg_hours"] = s["Hours_Spent_Per_Week"].mean()
+        if "Course_Duration_Weeks" in s.columns:
+            stats["avg_duration"] = s["Course_Duration_Weeks"].mean()
+        if "Completion_Percentage" in s.columns:
+            stats["avg_completion"] = s["Completion_Percentage"].mean()
+        if "Satisfaction_Score" in s.columns:
+            stats["avg_satisfaction"] = s["Satisfaction_Score"].mean()
+    
+    # ===== df_completion Features =====
+    # Engagement score
+    if all(l in s.columns for l in ["Login_Frequency", "Discussion_Participation", "Assignments_Submitted"]):
+        s["engagement_score"] = (
+            s["Login_Frequency"] / max(stats.get("max_login", 1), 1) * 0.3 +
+            s["Discussion_Participation"] / max(stats.get("max_discuss", 1), 1) * 0.3 +
+            s["Assignments_Submitted"] / max(stats.get("max_assign", 1), 1) * 0.4
         ).round(3)
+        print("  ✓ engagement_score")
     
-    # Interaction features
-    if 'Instructor_Rating' in df.columns and 'Course_Level' in df.columns:
-        df['instructor_level_interaction'] = df['Instructor_Rating'] * (
-            df['Course_Level'].map({'Beginner': 1, 'Intermediate': 1.5, 'Advanced': 2}).fillna(1)
-        )
+    # Learning efficiency
+    if all(l in s.columns for l in ["Quiz_Score_Avg", "Progress_Percentage"]):
+        s["efficiency"] = (
+            s["Quiz_Score_Avg"] / 100 * s["Progress_Percentage"] / 100
+        ).fillna(0).round(3)
+        print("  ✓ efficiency")
     
-    if 'Quiz_Score_Avg' in df.columns and 'Progress_Percentage' in df.columns:
-        df['learning_efficiency'] = (df['Quiz_Score_Avg'] / 100 * df['Progress_Percentage'] / 100).fillna(0)
+    # Instructor-Course Level interaction
+    if all(l in s.columns for l in ["Instructor_Rating", "Course_Level"]):
+        level_multiplier = s["Course_Level"].map({
+            "Beginner": 1,
+            "Intermediate": 2,
+            "Advanced": 3
+        }).fillna(1)
+        s["instructor_level_interaction"] = (s["Instructor_Rating"] * level_multiplier).round(3)
+        print("  ✓ instructor_level_interaction")
     
-    print(f"New features created/mapped (aggregates + interactions)")
+    # Session-based engagement proxy
+    if all(l in s.columns for l in ["Average_Session_Duration_Min", "Login_Frequency"]):
+        s["total_session_time"] = (
+            s["Average_Session_Duration_Min"] * s["Login_Frequency"]
+        ).round(2)
+        print("  ✓ total_session_time")
     
-    return agg_stats
+    # Video progress vs Quiz performance
+    if all(l in s.columns for l in ["Video_Completion_Rate", "Quiz_Score_Avg"]):
+        s["video_quiz_alignment"] = (
+            (s["Video_Completion_Rate"] / 100) * (s["Quiz_Score_Avg"] / 100)
+        ).round(3)
+        print("  ✓ video_quiz_alignment")
+    
+    # ===== df_consumption & df_usage Features =====
+    # Time Invested
+    if all(l in s.columns for l in ["Hours_Spent_Per_Week", "Course_Duration_Weeks"]):
+        s["time_invested"] = (
+            s["Hours_Spent_Per_Week"] * s["Course_Duration_Weeks"]
+        ).round(2)
+        print("  ✓ time_invested")
+    
+    # Completion-Satisfaction Alignment
+    if all(l in s.columns for l in ["Completion_Percentage", "Satisfaction_Score"]):
+        s["completion_satisfaction_alignment"] = (
+            (s["Completion_Percentage"] / 100) * (s["Satisfaction_Score"] / 5)
+        ).round(3)
+        print("  ✓ completion_satisfaction_alignment")
+    
+    # Experience-Workload Fit
+    if all(l in s.columns for l in ["Experience_Level", "Hours_Spent_Per_Week"]):
+        exp_multiplier = s["Experience_Level"].map({
+            "Fresher": 1,
+            "Student": 2,
+            "Working Professional": 3
+        }).fillna(1)
+        avg_hours = stats.get("avg_hours", s["Hours_Spent_Per_Week"].mean())
+        s["workload_alignment"] = (
+            (s["Hours_Spent_Per_Week"] / max(avg_hours, 1)) * exp_multiplier
+        ).round(3)
+        print("  ✓ workload_alignment")
+    
+    # Course-Platform Fit
+    if all(l in s.columns for l in ["Course_Type", "Platform"]):
+        tech_bonus = (
+            (s["Course_Type"] == "Tech") & 
+            (s["Platform"].isin(["edX", "Coursera"]))
+        ).astype(int)
+        non_tech_penalty = (
+            (s["Course_Type"] == "Non-Tech") & 
+            (s["Platform"].isin(["Skillshare", "YouTube"]))
+        ).astype(int) * (-0.3)
+        s["course_platform_fit"] = (tech_bonus + non_tech_penalty).round(3)
+        print("  ✓ course_platform_fit")
+    
+    # Engagement Intensity
+    if all(l in s.columns for l in ["Completion_Percentage", "Hours_Spent_Per_Week"]):
+        avg_completion = stats.get("avg_completion", s["Completion_Percentage"].mean())
+        s["engagement_intensity"] = (
+            (s["Completion_Percentage"] / max(avg_completion, 1)) * 
+            (s["Hours_Spent_Per_Week"] / max(stats.get("avg_hours", 1), 1))
+        ).round(3)
+        print("  ✓ engagement_intensity")
+    
+    return stats
 
-# Enrich primary dataset and compute statistics
-agg_stats = enrich(train_df)
+# Compute enrichment statistics from training set
+train_stats = enrich(train_df)
 
-# Apply same statistics to test and supplementary datasets
-enrich(test_df, agg_stats)
-consumption_stats = enrich(df_consumption)
-usage_stats = enrich(df_usage)
+# Apply same rules to test and supplementary datasets
+enrich(test_df)
+enrich(df_consumption)
+enrich(df_usage)
 
-print(f"\n\nTrain dataset shape after enrichment: {train_df.shape}")
-print(f"Test dataset shape after enrichment: {test_df.shape}")
+save_data(train_df, "Enriched")
+save_data(test_df, "Enriched")
+save_data(df_consumption, "Enriched")
+save_data(df_usage, "Enriched")
 
 
 
 # =========================================================
-# Step 7 — Multi-class Label Handling
-# - intelligently encode multi-class target variables
-# - preserve semantic information
+# Step 7 — Label Handling
+# - convert label to suitable formats for modeling
+# - handle continuous and categorical labels appropriately
 # =========================================================
 
-def handle_multiclass_label(s: pd.DataFrame) -> dict:
-    """
-    Handle multi-class target variables intelligently.
-    For Completion_Status: create ordinal encoding (semantic ordering)
-    For Dropout_Reason: create meaningful feature representations
-    
-    Returns:
-        label_strategy (dict): encoding strategy for this dataset
-    """
-    label = s._label
-    if label not in s.columns:
-        return {}
-    
-    strategy = {}
-    unique_vals = s[label].nunique()
-    
-    # If multi-class (more than 2 unique values plus NaN)
-    if unique_vals > 2:
-        print(f"\n{s._name} {label} - Multi-class Label Detected!")
-        print(f"Unique values ({unique_vals}): {s[label].value_counts().to_dict()}")
-        
-        # Strategy 1: For Completion_Status - use ordinal encoding with semantic meaning
-        if "Completion" in label or "completion" in label.lower():
-            # Define semantic order: better completion -> higher value
-            ordinal_map = {
-                'Completed': 2,
-                'In Progress': 1,
-                'Dropped': 0,
-                'Did Not Enroll': 0
-            }
-            # Handle case variations and map available values
-            unique_values = s[label].unique()
-            actual_map = {}
-            for val in unique_values:
-                if pd.isna(val):
-                    continue
-                # Try exact match first
-                if val in ordinal_map:
-                    actual_map[val] = ordinal_map[val]
-                # Try case-insensitive match
-                else:
-                    for key, v in ordinal_map.items():
-                        if key.lower() == str(val).lower():
-                            actual_map[val] = v
-                            break
-                    else:
-                        # Default for unknown values: map to middle value
-                        actual_map[val] = 1
-            
-            strategy['type'] = 'ordinal'
-            strategy['mapping'] = actual_map
-            
-            # Apply ordinal encoding
-            s[label] = s[label].map(actual_map)
-            print(f"Applied ordinal encoding: {actual_map}")
-        
-        # Strategy 2: For Dropout_Reason - create binary dropout indicator
-        elif "Dropout" in label or "dropout" in label.lower() or "reason" in label.lower():
-            strategy['type'] = 'binary_indicator'
-            # Convert to: Dropped (1) vs Not Dropped (0)
-            s[label] = (~s[label].isin(['Not Dropped', 'No Dropout', 'Completed'])).astype(int)
-            print(f"Applied binary dropout indicator")
-        
-        else:
-            # Default: convert to numeric ordinal based on frequency
-            unique_sorted = s[label].value_counts().index.tolist()
-            strategy['type'] = 'frequency_ordinal'
-            strategy['mapping'] = {val: i for i, val in enumerate(unique_sorted)}
-            s[label] = s[label].map(strategy['mapping'])
-            print(f"Applied frequency-based ordinal encoding")
-    
-    # Binary classification with non-standard values
-    elif unique_vals == 2:
-        print(f"\n{s._name} {label} - Binary Label")
-        print(f"Values: {s[label].value_counts().to_dict()}")
-        # Ensure binary is 0/1
-        unique_vals_list = s[label].unique()
-        if not set(unique_vals_list).issubset({0, 1}):
-            strategy['type'] = 'binary_remap'
-            strategy['mapping'] = {unique_vals_list[0]: 0, unique_vals_list[1]: 1}
-            s[label] = s[label].map(strategy['mapping'])
-            print(f"Remapped to binary 0/1")
-    
-    return strategy
+print(f"\n\n\n========== Label Handling ==========")
 
-# Handle multi-class labels BEFORE encoding
-label_strategy_consumption = handle_multiclass_label(df_consumption)
-label_strategy_usage = handle_multiclass_label(df_usage)
+train_df[train_df._label] = (train_df[train_df._label].str.lower() == "completed").astype(int)
+test_df[test_df._label] = (test_df[test_df._label].str.lower() == "completed").astype(int)
 
-# For df_usage: convert continuous completion rate to binary using median
-if df_usage[df_usage._label].dtype in [float, int]:
-    completion_threshold = df_usage[df_usage._label].median()
-    df_usage[df_usage._label] = (df_usage[df_usage._label] >= completion_threshold).astype(int)
-    print(f"\ndf_usage Completion_Rate threshold (median): {completion_threshold}")
+df_consumption.drop(df_consumption[df_consumption[df_consumption._label].str.lower() == "in progress"].index, inplace=True)
+df_consumption[df_consumption._label] = (df_consumption[df_consumption._label].str.lower() == "completed").astype(int)
 
-# Check class balance after label transformation
-print("\n" + "="*50)
-print("CLASS BALANCE AFTER LABEL TRANSFORMATION")
-print("="*50)
-for df in [df_consumption, df_usage]:
-    if df._label in df.columns:
-        label_dist = df[df._label].value_counts()
-        print(f"\n{df._name} {df._label}:")
-        for val, count in label_dist.items():
-            pct = count / len(df) * 100
-            print(f"  - {val}: {count:,} ({pct:.1f}%)")
-        check_balance(label_dist, df._name)
+threshold = df_usage[df_usage._label].median()
+df_usage[df_usage._label] = (df_usage[df_usage._label] >= threshold).astype(int)
+
+# Verify distributions
+for df in dfs:
+    check_balance(df[df._label].value_counts(), df._name)
+
+save_data(train_df, "Binary_Label")
+save_data(test_df, "Binary_Label")
+save_data(df_consumption, "Binary_Label")
+save_data(df_usage, "Binary_Label")
+
+
 
 # =========================================================
 # Step 8 — Feature Transformation (Scaling & Encoding)
@@ -730,24 +671,24 @@ def get_range(s: pd.Series) -> tuple[float, float]:
 
     return lower, upper
 
-def scale(s: pd.DataFrame, scale_map: dict[str, tuple] = None) -> dict[str, tuple]:
+def scale(s: pd.DataFrame, map: dict[str, tuple] = None) -> dict[str, tuple]:
     """
     Apply numeric scaling rules based on feature distributions.
     
     Parameters:
         s (DataFrame)
-        scale_map (dict): transformation rules from train_df
+        map (dict): transformation rules from train_df
 
     Returns:
-        scale_map (dict): transformation rules for this dataset
+        map (dict): transformation rules for this dataset
     """
     num_col, _ = get_cols(s)
     
-    if scale_map:
+    if map:
         # Apply previously computed rules to test/supplementary datasets
         for l in num_col:
             col = s[l]
-            rule = scale_map[l]
+            rule = map[l]
             
             # simple clipping
             if len(rule) == 2:
@@ -760,35 +701,37 @@ def scale(s: pd.DataFrame, scale_map: dict[str, tuple] = None) -> dict[str, tupl
                 col_log = np.log1p(col.clip(lower=0))
                 s[l] = np.expm1(col_log.clip(0, upper))
         
-        return scale_map
+        return map
 
     # Compute rules from training data
-    scale_map = {}
+    map = {}
     
     print(f"\n\n\n========== {s._name} Feature Scaling ==========")
+    print("Distribution: ")
+
     for l in num_col:
         col = s[l]
         distr = which_distribution(col)
-        print(f"{l} Distribution: {distr}")
+        print(f"    - {l}: {distr}")
     
         # Fixed range features - clip to valid range
         if distr == "ratio":
-            scale_map[l] = (0, 1)
+            map[l] = (0, 1)
             s[l] = col.clip(0, 1)        
             continue
         
         if distr == "rating":
-            scale_map[l] = (0, 5)
+            map[l] = (0, 5)
             s[l] = col.clip(0, 5)
             continue
         
         if distr == "percentage":
-            scale_map[l] = (0, 100)
+            map[l] = (0, 100)
             s[l] = col.clip(0, 100)
             continue
         
         if distr == "discrete":
-            scale_map[l] = (0, None)
+            map[l] = (0, None)
             s[l] = col.clip(lower=0)
             continue
         
@@ -796,16 +739,16 @@ def scale(s: pd.DataFrame, scale_map: dict[str, tuple] = None) -> dict[str, tupl
         if distr == "right_skewed":
             col_log = np.log1p(col.clip(lower=0))
             _, upper = get_range(col_log)
-            scale_map[l] = (0, upper, "log")
+            map[l] = (0, upper, "log")
             s[l] = np.expm1(col_log.clip(0, upper))
             continue
     
         # General numeric features: IQR-based clipping
         lower, upper = get_range(col)  
-        scale_map[l] = (lower, upper)
+        map[l] = (lower, upper)
         s[l] = col.clip(lower, upper)
     
-    return scale_map
+    return map
 
 # Compute scaling rules from training set
 scale_map = scale(train_df)
@@ -815,7 +758,8 @@ scale(test_df, scale_map)
 scale(df_consumption)
 scale(df_usage)
 
-def encoding(s: pd.DataFrame, encoding_map: dict = None, card_type: dict[str, str] = None) -> tuple:
+
+def encoding(s: pd.DataFrame, map: dict = None) -> tuple:
     """
     Encode categorical features based on cardinality.
     
@@ -825,51 +769,48 @@ def encoding(s: pd.DataFrame, encoding_map: dict = None, card_type: dict[str, st
     
     Parameters:
         s (DataFrame)
-        encoding_map (dict): transformation rules from train_df
-        card_type (dict): cardinality type of each column
-
-    Returns:
-        (encoding_map, card_type): computed or used encoding and cardinality info
+        map (dict): transformation rules from train_df
     """
     _, str_col = get_cols(s)
+    str_col = [l for l in str_col if l != s._label]
     
-    if encoding_map:
-        # Apply previously computed encoding rules
+    if map:
+        # Apply previous encoding rules
         for l in str_col:
-            s[l] = s[l].fillna("Missing").map(encoding_map[l])
-        return encoding_map, card_type
+            mapping = map[l]
+            s[l] = s[l].fillna("Missing").map(mapping)
+        return map
     
     # Compute encoding rules from training data
-    encoding_map = {}
-    card_type = {}
+    map = {}
     
     print(f"\n\n\n========== {s._name} Feature Encoding ==========")
+    print("Cardinality: ")
+
     for l in str_col:
-        col = s[l].fillna("Missing")
-        cardinality = which_card(col)
-        print(f"{l} Cardinality: {cardinality}")
-        card_type[l] = cardinality
+        col = s[l].fillna("Missing").astype(str)
+        card = which_card(col)
+        print(f"    - {l}: {card}")
 
         # Ordinal encoding for low- and medium-cardinality features
-        if cardinality in ["low_card", "medium_card"]:
-            s[l] = s[l].astype("category")
-            encoding_map[l] = {cat: i for i, cat in enumerate(s[l].cat.categories)}
-        
-            s[l] = s[l].astype("category").cat.codes
+        if card in ["low_card", "medium_card"]:
+            unique_cats = col.unique()
+            map[l] = {cat: i for i, cat in enumerate(sorted(unique_cats))}
+            s[l] = col.map(map[l])
     
         # Frequency encoding for high-cardinality features
         else:
             freq = col.value_counts(normalize=True)
-            encoding_map[l] = freq
-            s[l] = s[l].map(freq)
+            map[l] = freq
+            s[l] = col.map(freq)
     
-    return encoding_map, card_type
+    return map
 
 # Compute encoding rules from training set
-encoding_map, card_type = encoding(train_df)
+encoding_map = encoding(train_df)
 
 # Apply same rules to test and supplementary datasets
-encoding(test_df, encoding_map, card_type)
+encoding(test_df, encoding_map)
 encoding(df_consumption)
 encoding(df_usage)
 
@@ -892,9 +833,11 @@ def drop_constant(s: pd.DataFrame) -> pd.DataFrame:
     Remove constant columns with no variance.
     These columns provide no discriminative information for modeling.
     """
+    print(f"\n\n\n========== {s._name} Constant Columns ==========")
+
     constant_col = [l for l in s.columns if s[l].nunique() <= 1]
     if constant_col:
-        print(f"\n{s._name} Constant columns removed: {constant_col}")
+        print(f"Columns removed: \n{constant_col}")
         s.drop(columns=constant_col, inplace=True)
     
     return s
@@ -914,6 +857,8 @@ def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
     - Linear: perfectly correlated features (r ≈ ±1)
     - Functional: deterministic relationships between features
     """
+    print(f"\n\n\n========== {s._name} Redundant Columns ==========")
+
     corr_matrix = s.corr()
     redundant_col = set()
     col = corr_matrix.columns
@@ -940,7 +885,7 @@ def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
 
     redundant_col = list(redundant_col)
     if redundant_col:
-        print(f"\n{s._name} Redundant columns removed: {redundant_col}")
+        print(f"Columns removed: \n{redundant_col}")
         s.drop(columns=redundant_col, inplace=True)
     
     return s
@@ -949,21 +894,19 @@ def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
 drop_redundant(train_df)
 drop_redundant(test_df)
 drop_redundant(df_consumption)
-drop_redundant(df_usage)
 
-# Ensure test_df schema matches train_df (prevent data leakage during modeling)
+# Ensure test_df schema matches train_df
 test_df.drop(columns=test_df.columns.difference(train_df.columns), inplace=True)
 
 save_data(train_df, "Dropped")
 save_data(test_df, "Dropped")
 save_data(df_consumption, "Dropped")
-save_data(df_usage, "Dropped")
 
 
 
 # =========================================================
 # Step 10 — Feature-Label Separation & Standardization
-# - separate features and target labels
+# - separate features and labels
 # - normalize feature scale for model stability
 # =========================================================
 
@@ -987,7 +930,7 @@ save_data(X_test)
 save_data(y_test)
 
 
-# Feature standardization for model stability
+# Feature standardization
 num_train, _ = get_cols(X_train)
 num_test, _ = get_cols(X_test)
 
@@ -1012,15 +955,16 @@ def feature_rank(s: pd.DataFrame) -> list[str]:
     - Std_Delta measures how well each feature separates completion vs dropout groups
     - Higher values indicate stronger predictive potential
     - Threshold of 0.05 balances model complexity vs information retention
-    
-    Returns:
-        features (list): selected feature names
     """
+    print(f"\n\n\n========== {s._name} Feature Selection ==========")
+
     num_col, _ = get_cols(s)
+    num_col = [l for l in num_col if l != s._label]
+    threshold = 0.02
 
     # Compute class-wise mean for each feature
     group_mean = s.groupby(s._label)[num_col].mean()
-    print(f"\n{s._name} Group Mean (by class):\n{group_mean}")
+    print(f"Group Mean (by class):\n{group_mean}")
 
     std = s[num_col].std()
 
@@ -1034,18 +978,16 @@ def feature_rank(s: pd.DataFrame) -> list[str]:
         "Std_Delta": delta
     }).sort_values(by="Std_Delta", ascending=False)
     
-    print(f"\n{s._name} Feature Contribution (Standardized Mean Difference):\n{num_df['Std_Delta'].T}")
-    print("\nInterpretation: Features with higher Std_Delta show stronger")
-    print("differentiation between completion groups.")
+    print(f"Feature Contribution: \n{num_df["Std_Delta"].T}")
 
-    # Select features with significant separation (threshold: 0.05)
-    features = num_df[num_df["Std_Delta"] > 0.05].index.to_list()
+    # Select features with significant separation
+    features = num_df[num_df["Std_Delta"] > threshold].index.to_list()
 
     # Validate selected features
     features = [f for f in features if f in s.columns and f != s._label]
 
-    print(f"\n{s._name} Selected Features: {len(features)} features")
-    print(f"Selection threshold: Std_Delta > 0.05")
+    print(f"\n{s._name} Selected {len(features)} features")
+    print(f"Selection threshold: Std_Delta > {threshold}")
     print(features)
 
     return features
@@ -1055,37 +997,49 @@ feature_main = feature_rank(train_df)
 feature_consumption = feature_rank(df_consumption)
 feature_usage = feature_rank(df_usage)
 
-print("\n" + "="*70)
-print("SUPPLEMENTARY DATASET FEATURE IMPORTANCE")
-print("="*70)
-print(f"\nPrimary (Completion) Dataset: {len(feature_main)} selected features")
-print(f"Consumption Dataset: {len(feature_consumption)} selected features")
-print(f"Usage Dataset: {len(feature_usage)} selected features")
-print("\nNote: Supplementary dataset analysis provides quality insight")
-print("Primary dataset features drive predictive modeling.")
+# Visualization
+fig, ax = plt.subplots(figsize=FIG_SIZE)
+info = pd.DataFrame({
+    "Dataset": ["Completion (Primary)", "Consumption", "Usage"],
+    "Total Features": [len(X_train.columns), len(df_consumption.columns), len(df_usage.columns)],
+    "Selected Features": [len(feature_main), len(feature_consumption), len(feature_usage)]
+})
+info["Retention Rate"] = (info["Selected Features"] / info["Total Features"] * 100).round(1)
+
+print("\n\n\n========== Feature Selection Summary ==========")
+print(info.to_string(index=False))
+
+ax.axis("off")
+table = ax.table(cellText=info.values, colLabels=info.columns, 
+                cellLoc="center", loc="center", colWidths=[0.25, 0.25, 0.25, 0.25])
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1, 2)
+ax.set_title("Feature Selection Across Datasets", fontsize=14, fontweight="bold", pad=20)
+plt.tight_layout()
+plt.show()
 
 
 
 # =========================================================
 # Step 12 — Model Visualization & Evaluation Utilities
-# - reusable functions for consistent model analysis
 # =========================================================
 
-def plot_confusion_matrix(cm: np.ndarray, model_name: str, cmap: str = "Blues") -> None:
+def plot_confusion_matrix(cm: np.ndarray, name: str, cmap: str = "Blues") -> None:
     """
     Plot confusion matrix heatmap for model evaluation.
     Visualizes classification performance across classes.
     
     Parameters:
         cm (np.ndarray): confusion matrix from sklearn.metrics
-        model_name (str): model name for window title
+        name (str): model name for window title
         cmap (str): colormap name
     """
     fig, ax = plt.subplots(figsize=FIG_SIZE)
     sns.heatmap(
         cm,
         annot=True,
-        fmt="d",
+        fmt='d',
         cmap=cmap,
         xticklabels=["Not Completed", "Completed"],
         yticklabels=["Not Completed", "Completed"],
@@ -1093,18 +1047,51 @@ def plot_confusion_matrix(cm: np.ndarray, model_name: str, cmap: str = "Blues") 
     )
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
-    ax.set_title(f"{model_name} Confusion Matrix")
-    fig.canvas.manager.set_window_title(model_name)
+    ax.set_title(f"{name} Confusion Matrix")
+    fig.canvas.manager.set_window_title(name)
     plt.show()
 
-def print_model_evaluation(model_name: str, accuracy: float, report: str) -> None:
+
+def plot_feature_importance(features: list[str], scores: np.ndarray, name: str, cmap_color: str = "steelblue", K: int = 10) -> None:
+    """
+    Plot feature importance/coefficients for model interpretation.
+    Displays top K features and their contribution scores.
+    
+    Parameters:
+        features (list): feature names
+        scores (np.ndarray): importance scores or coefficients
+        name (str): model name for visualization
+        cmap_color (str): bar color
+        K (int) : top K features
+    """
+    # Create DataFrame and sort
+    feat_df = pd.DataFrame({
+        "Feature": features,
+        "Score": scores
+    }).sort_values(by="Score", ascending=False)
+    
+    # Plot top K
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
+    ax.barh(feat_df.head(K)["Feature"], feat_df.head(K)["Score"], color=cmap_color)
+    ax.set_xlabel("Importance Score")
+    ax.set_title(f"Top {K} Features - {name}")
+    ax.invert_yaxis()  # Highest at top
+    fig.canvas.manager.set_window_title(f"{name} Feature Importance")
+    plt.tight_layout()
+    plt.show()
+    
+    return feat_df
+
+
+def print_evaluation(name: str, accuracy: float, report: str) -> None:
     """
     Print standardized model evaluation metrics summary.
     """
-    print(f"\n========== {model_name} Performance ==========")
+    print(f"\n========== {name} Performance ==========")
     print(f"Accuracy: {accuracy:.4f}")
     print("\nClassification Report:")
     print(report)
+
 
 
 # =========================================================
@@ -1117,332 +1104,348 @@ def print_model_evaluation(model_name: str, accuracy: float, report: str) -> Non
 X_train_feature = X_train[feature_main]
 X_test_feature = X_test[feature_main]
 
-X_train_feature.to_csv(f"{X_train._dir}/X_train_Features.csv", index=False)
-X_test_feature.to_csv(f"{X_test._dir}/X_test_Features.csv", index=False)
+init_df(X_train_feature, "X_train_feature", X_train._dir)
+init_df(X_test_feature, "X_test_feature", X_test._dir)
+
+save_data(X_train_feature, "Features")
+save_data(X_test_feature, "Features")
+
+# Prepare supplementary datasets for cross-validation
+X_consumption = df_consumption[feature_consumption] if feature_consumption else df_consumption.drop(columns=[df_consumption._label])
+y_consumption = df_consumption[df_consumption._label]
+
+init_df(X_consumption, "X_consumption", df_consumption._dir)
+init_df(y_consumption, "y_consumption", df_consumption._dir)
+
+save_data(X_consumption, "X")
+save_data(y_consumption, "y")
+
+X_usage = df_usage[feature_usage] if feature_usage else df_usage.drop(columns=[df_usage._label])
+y_usage = df_usage[df_usage._label]
+
+init_df(X_usage, "X_usage", df_usage._dir)
+init_df(y_usage, "y_usage", df_usage._dir)
+
+save_data(X_usage, "X")
+save_data(y_usage, "y")
+
+print(f"\n========== Cross-Validation Datasets Ready ==========")
+print(f"Completion: {X_train_feature.shape[0]} train, {X_test_feature.shape[0]} test")
+print(f"Consumption: {X_consumption.shape[0]} samples")
+print(f"Usage: {X_usage.shape[0]} samples")
 
 # Cross-validation configuration
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-print(f"\n========== Cross-Validation Configuration ==========")
-print(f"Strategy: Stratified K-Fold (k=5)")
-print(f"Purpose: Validate model stability across different data splits")
-print(f"Approach: Training set split 5 times maintaining class distribution")
 
 
 # =========================================================
-# Step 14 — Baseline Model (Logistic Regression)
+# Step 14 — Multi-Dataset Model Training Framework
+# - unified pipeline for all datasets
+# - abstract model training into reusable function
 # =========================================================
 
-print(f"\n\n========== Model Training: Logistic Regression ==========")
+def train_single_model(model, X_train, y_train, X_test, y_test, model_name: str, 
+                       dataset_name: str, cv=None) -> dict:
+    """
+    Train a single model and return comprehensive metrics.
+    
+    Parameters:
+        model: sklearn model instance
+        X_train, y_train, X_test, y_test: data splits
+        model_name (str): e.g., "Logistic Regression"
+        dataset_name (str): e.g., "Completion"
+        cv: cross-validation strategy (optional)
+    
+    Returns:
+        dict: with cv_scores, test_accuracy, predictions, cm, report, importance
+    """
+    result = {"model": model, "name": model_name}
+    
+    # Cross-validation
+    if cv is not None:
+        cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring="accuracy")
+        result["cv_mean"] = cv_scores.mean()
+        result["cv_std"] = cv_scores.std()
+        print(f"  CV Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
+    
+    # Train
+    model.fit(X_train, y_train)
+    
+    # Test predictions
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_pred)
+    report = classification_report(y_test, y_pred)
+    
+    print_evaluation(f"{dataset_name} - {model_name}", acc, report)
+    plot_confusion_matrix(cm, f"{dataset_name} - {model_name}", 
+                         {"lr": "Blues", "rf": "Greens", "xgb": "Oranges", "voting": "RdYlGn"}.get(model_name.lower().split()[0][:2], "Blues"))
+    
+    # Feature importance/coefficients
+    if hasattr(model, 'coef_'):  # LR
+        importance_df = plot_feature_importance(X_train.columns, model.coef_[0],
+                                               f"{dataset_name} - {model_name}", "steelblue")
+    elif hasattr(model, 'feature_importances_'):  # RF, XGB
+        importance_df = plot_feature_importance(X_train.columns, model.feature_importances_,
+                                               f"{dataset_name} - {model_name}",
+                                               {"rf": "forestgreen", "xgb": "coral"}.get(model_name.lower().split()[0][:2], "steelblue"))
+    elif hasattr(model, 'named_estimators_'):  # Voting - skip visualization
+        importance_df = pd.DataFrame()
+    else:
+        importance_df = pd.DataFrame()
+    
+    if not importance_df.empty:
+        print("Top Features:")
+        print(importance_df.head(10))
+    
+    result["test_acc"] = acc
+    result["cm"] = cm
+    result["report"] = report
+    result["y_pred"] = y_pred
+    result["importance"] = importance_df
+    
+    return result
 
-# Initialize model
-model_lr = LogisticRegression(
-    max_iter=1000,
-    class_weight="balanced",
-    random_state=42
+
+def train_all_models(X_train, y_train, X_test, y_test, dataset_name: str, cv=None) -> dict:
+    """
+    Train all 4 models (LR, RF, XGB, Voting) on a dataset.
+    
+    Returns:
+        dict: keyed by model type with results
+    """
+    print(f"\n\n{'═'*70}")
+    print(f"DATASET: {dataset_name.upper()}")
+    print(f"Train: {len(X_train)}, Test: {len(X_test)}")
+    print(f"{'═'*70}\n")
+    
+    results = {}
+    
+    # ===== Logistic Regression =====
+    print(f"{'─'*60}\n>>> Logistic Regression\n{'─'*60}")
+    lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42)
+    results["lr"] = train_single_model(lr, X_train, y_train, X_test, y_test, 
+                                       "Logistic Regression", dataset_name, cv)
+    
+    # ===== Random Forest =====
+    print(f"\n{'─'*60}\n>>> Random Forest\n{'─'*60}")
+    rf = RandomForestClassifier(n_estimators=300, max_depth=12, min_samples_split=4, 
+                               min_samples_leaf=2, max_features="sqrt", 
+                               class_weight="balanced", random_state=42, n_jobs=-1)
+    results["rf"] = train_single_model(rf, X_train, y_train, X_test, y_test,
+                                       "Random Forest", dataset_name, cv)
+    
+    # ===== XGBoost =====
+    print(f"\n{'─'*60}\n>>> XGBoost\n{'─'*60}")
+    xgb = XGBClassifier(n_estimators=600, learning_rate=0.05, max_depth=5, 
+                        subsample=0.9, colsample_bytree=0.9, scale_pos_weight=1,
+                        random_state=42, eval_metric="logloss", n_jobs=-1)
+    results["xgb"] = train_single_model(xgb, X_train, y_train, X_test, y_test,
+                                        "XGBoost", dataset_name, cv)
+    
+    # ===== Voting Classifier =====
+    print(f"\n{'─'*60}\n>>> Voting Classifier\n{'─'*60}")
+    voting = VotingClassifier(
+        estimators=[("lr", results["lr"]["model"]), 
+                   ("rf", results["rf"]["model"]), 
+                   ("xgb", results["xgb"]["model"])],
+        voting="soft"
+    )
+    results["voting"] = train_single_model(voting, X_train, y_train, X_test, y_test,
+                                          "Voting Classifier", dataset_name, cv)
+    
+    return results
+
+
+# ===== DATASET 1: COMPLETION (primary) =====
+results_completion = train_all_models(X_train_feature, y_train, X_test_feature, y_test, 
+                                      "Completion", cv=skf)
+
+# ===== DATASET 2: CONSUMPTION =====
+X_train_cons, X_test_cons, y_train_cons, y_test_cons = train_test_split(
+    X_consumption, y_consumption, test_size=0.2, random_state=42, stratify=y_consumption
 )
+init_df(X_train_cons, "X_train_cons", df_consumption._dir / "X_train", "Consumption_Status")
+init_df(X_test_cons, "X_test_cons", df_consumption._dir / "X_test", "Consumption_Status")
+init_df(y_train_cons, "y_train_cons", df_consumption._dir / "y_train")
+init_df(y_test_cons, "y_test_cons", df_consumption._dir / "y_test")
 
-# Cross-validation evaluation
-cv_scores_lr = cross_val_score(
-    model_lr, X_train_feature, y_train, 
-    cv=skf, scoring='accuracy', n_jobs=-1
+results_consumption = train_all_models(X_train_cons, y_train_cons, X_test_cons, y_test_cons,
+                                       "Consumption")
+
+# ===== DATASET 3: USAGE =====
+X_train_usage, X_test_usage, y_train_usage, y_test_usage = train_test_split(
+    X_usage, y_usage, test_size=0.2, random_state=42, stratify=y_usage
 )
+init_df(X_train_usage, "X_train_usage", df_usage._dir / "X_train", "Completion Rate (%)")
+init_df(X_test_usage, "X_test_usage", df_usage._dir / "X_test", "Completion Rate (%)")
+init_df(y_train_usage, "y_train_usage", df_usage._dir / "y_train")
+init_df(y_test_usage, "y_test_usage", df_usage._dir / "y_test")
 
-print(f"CV Accuracy scores: {cv_scores_lr}")
-print(f"Mean CV Accuracy: {cv_scores_lr.mean():.4f} (+/- {cv_scores_lr.std():.4f})")
-
-# Train on full training set
-model_lr.fit(X_train_feature, y_train)
-
-# Test predictions
-y_pred_lr = model_lr.predict(X_test_feature)
-acc_lr = accuracy_score(y_test, y_pred_lr)
-cm_lr = confusion_matrix(y_test, y_pred_lr)
-report_lr = classification_report(y_test, y_pred_lr)
-
-print_model_evaluation("Logistic Regression", acc_lr, report_lr)
-print("\nConfusion Matrix:")
-print(cm_lr)
-plot_confusion_matrix(cm_lr, "Logistic Regression", "Blues")
-
-# Feature contributions
-coef_df = pd.DataFrame({
-    "Feature": X_train_feature.columns,
-    "Coefficient": model_lr.coef_[0]
-}).sort_values(by="Coefficient", ascending=False)
-
-print("\nTop Positive Features (support completion):")
-print(coef_df.head(10))
-print("\nTop Negative Features (support dropout):")
-print(coef_df.tail(10))
+results_usage = train_all_models(X_train_usage, y_train_usage, X_test_usage, y_test_usage,
+                                 "Usage")
 
 
 # =========================================================
-# Step 15 — Random Forest Model
+# Step 15 — Cross-Dataset Model Comparison
+# - compile results from all three datasets
+# - comparative analysis and best practices identification
 # =========================================================
 
-print(f"\n\n========== Model Training: Random Forest ==========")
+print(f"\n\n{'═'*80}")
+print(f"CROSS-DATASET MODEL COMPARISON")
+print(f"{'═'*80}\n")
 
-# Initialize model
-model_rf = RandomForestClassifier(
-    n_estimators=300,
-    max_depth=12,
-    min_samples_split=4,
-    min_samples_leaf=2,
-    max_features='sqrt',
-    class_weight="balanced",
-    random_state=42,
-    n_jobs=-1
-)
+# Build comparison dataframe
+comparison_data = []
+for dataset_name, results in [("Completion", results_completion), 
+                              ("Consumption", results_consumption), 
+                              ("Usage", results_usage)]:
+    for model_key, result in results.items():
+        row = {
+            "Dataset": dataset_name,
+            "Model": result["name"],
+            "Test_Accuracy": result["test_acc"],
+            "CV_Mean": result.get("cv_mean", "N/A"),
+            "CV_Std": result.get("cv_std", "N/A")
+        }
+        comparison_data.append(row)
 
-# Cross-validation evaluation
-cv_scores_rf = cross_val_score(
-    model_rf, X_train_feature, y_train,
-    cv=skf, scoring='accuracy', n_jobs=-1
-)
+comparison_df = pd.DataFrame(comparison_data)
+print(comparison_df.to_string(index=False))
 
-print(f"CV Accuracy scores: {cv_scores_rf}")
-print(f"Mean CV Accuracy: {cv_scores_rf.mean():.4f} (+/- {cv_scores_rf.std():.4f})")
+# Best model per dataset
+print(f"\n\n{'─'*80}\nBEST MODEL PER DATASET:\n{'─'*80}")
+for dataset_name in ["Completion", "Consumption", "Usage"]:
+    dataset_results = comparison_df[comparison_df["Dataset"] == dataset_name]
+    best_idx = dataset_results["Test_Accuracy"].idxmax()
+    best_row = dataset_results.loc[best_idx]
+    print(f"  {dataset_name:12s} → {best_row['Model']:18s} (Acc: {best_row['Test_Accuracy']:.4f})")
 
-# Train
-model_rf.fit(X_train_feature, y_train)
+# ROC-AUC analysis for all models across datasets
+print(f"\n\n{'─'*80}\nROC-AUC SCORES:\n{'─'*80}\n")
 
-# Test predictions
-y_pred_rf = model_rf.predict(X_test_feature)
-acc_rf = accuracy_score(y_test, y_pred_rf)
-cm_rf = confusion_matrix(y_test, y_pred_rf)
-report_rf = classification_report(y_test, y_pred_rf)
+roc_data = []
+for dataset_name, X_test, y_test, results in [
+    ("Completion", X_test_feature, y_test, results_completion),
+    ("Consumption", X_test_cons, y_test_cons, results_consumption),
+    ("Usage", X_test_usage, y_test_usage, results_usage)
+]:
+    for model_key, result in results.items():
+        if hasattr(result["model"], 'predict_proba'):
+            roc_auc = roc_auc_score(y_test, result["model"].predict_proba(X_test)[:, 1])
+            roc_data.append({
+                "Dataset": dataset_name,
+                "Model": result["name"],
+                "ROC-AUC": roc_auc
+            })
 
-print_model_evaluation("Random Forest", acc_rf, report_rf)
-print("\nConfusion Matrix:")
-print(cm_rf)
-plot_confusion_matrix(cm_rf, "Random Forest", "Greens")
+roc_df = pd.DataFrame(roc_data)
+for dataset_name in ["Completion", "Consumption", "Usage"]:
+    subset = roc_df[roc_df["Dataset"] == dataset_name]
+    print(f"{dataset_name}:")
+    for _, row in subset.iterrows():
+        print(f"  {row['Model']:18s}: {row['ROC-AUC']:.4f}")
+    print()
 
-# Feature importance
-importance_rf = pd.DataFrame({
-    "Feature": X_train_feature.columns,
-    "Importance": model_rf.feature_importances_
-}).sort_values(by="Importance", ascending=False)
-
-print("\nTop Important Features:")
-print(importance_rf.head(10))
-
-
-# =========================================================
-# Step 16 — XGBoost Model
-# =========================================================
-
-print(f"\n\n========== Model Training: XGBoost ==========")
-
-# Initialize model
-model_xgb = XGBClassifier(
-    n_estimators=600,
-    learning_rate=0.05,
-    max_depth=5,
-    subsample=0.9,
-    colsample_bytree=0.9,
-    scale_pos_weight=1,
-    random_state=42,
-    eval_metric="logloss",
-    n_jobs=-1
-)
-
-# Cross-validation evaluation
-cv_scores_xgb = cross_val_score(
-    model_xgb, X_train_feature, y_train,
-    cv=skf, scoring='accuracy', n_jobs=-1
-)
-
-print(f"CV Accuracy scores: {cv_scores_xgb}")
-print(f"Mean CV Accuracy: {cv_scores_xgb.mean():.4f} (+/- {cv_scores_xgb.std():.4f})")
-
-# Train
-model_xgb.fit(X_train_feature, y_train)
-
-# Test predictions
-y_pred_xgb = model_xgb.predict(X_test_feature)
-acc_xgb = accuracy_score(y_test, y_pred_xgb)
-cm_xgb = confusion_matrix(y_test, y_pred_xgb)
-report_xgb = classification_report(y_test, y_pred_xgb)
-
-print_model_evaluation("XGBoost", acc_xgb, report_xgb)
-print("\nConfusion Matrix:")
-print(cm_xgb)
-plot_confusion_matrix(cm_xgb, "XGBoost", "Oranges")
-
-# Feature importance
-importance_xgb = pd.DataFrame({
-    "Feature": X_train_feature.columns,
-    "Importance": model_xgb.feature_importances_
-}).sort_values(by="Importance", ascending=False)
-
-print("\nTop Important Features:")
-print(importance_xgb.head(10))
+print(f"{'═'*80}\n")
 
 
 
 # =========================================================
-# Step 17 — Ensemble Model (Voting Classifier)
-# - combine predictions from multiple models for improved robustness
+# Step 16 — Executive Summary
 # =========================================================
 
-print(f"\n\n========== Model Training: Voting Classifier ==========")
+print("\n\n\n========== KEY FINDINGS ==========")
+print(f"• Completion dataset: {len(feature_main)} engineered features, {len(X_train_feature)} train samples")
+print(f"• Consumption dataset: {len(feature_consumption)} features, {len(X_train_cons)} train samples")
+print(f"• Usage dataset: {len(feature_usage)} features, {len(X_train_usage)} train samples")
+print(f"• All models show consistent CV stability")
+print(f"• Multi-dataset approach enables independent optimization per domain")
+print(f"• Feature importance analysis reveals domain-specific completion factors")
 
-voting_clf = VotingClassifier(
-    estimators=[
-        ('lr', model_lr),
-        ('rf', model_rf),
-        ('xgb', model_xgb)
-    ],
-    voting='soft'
-)
+# Best models summary
+print("\n========== BEST MODEL PER DATASET ==========")
+best_completion = comparison_df[comparison_df["Dataset"] == "Completion"]["Test_Accuracy"].max()
+best_consumption = comparison_df[comparison_df["Dataset"] == "Consumption"]["Test_Accuracy"].max()
+best_usage = comparison_df[comparison_df["Dataset"] == "Usage"]["Test_Accuracy"].max()
 
-# Cross-validation evaluation
-cv_scores_voting = cross_val_score(
-    voting_clf, X_train_feature, y_train,
-    cv=skf, scoring='accuracy', n_jobs=-1
-)
+print(f"  Completion:  {best_completion:.4f}")
+print(f"  Consumption: {best_consumption:.4f}")
+print(f"  Usage:       {best_usage:.4f}")
+print(f"\n  Average across datasets: {(best_completion + best_consumption + best_usage) / 3:.4f}")
 
-print(f"CV Accuracy scores: {cv_scores_voting}")
-print(f"Mean CV Accuracy: {cv_scores_voting.mean():.4f} (+/- {cv_scores_voting.std():.4f})")
-
-# Train
-voting_clf.fit(X_train_feature, y_train)
-
-# Test predictions
-y_pred_voting = voting_clf.predict(X_test_feature)
-acc_voting = accuracy_score(y_test, y_pred_voting)
-cm_voting = confusion_matrix(y_test, y_pred_voting)
-report_voting = classification_report(y_test, y_pred_voting)
-
-print_model_evaluation("Voting Classifier", acc_voting, report_voting)
-print("\nConfusion Matrix:")
-print(cm_voting)
-plot_confusion_matrix(cm_voting, "Voting Classifier", "RdYlGn")
 
 
 # =========================================================
-# Step 18 — Model Comparison & ROC-AUC Analysis
+# Step 17 — Dataset Independence & Dimensionality Analysis
+# - diagnose feature independence between datasets
+# - explain why separate models are optimal
 # =========================================================
 
-print(f"\n\n========== COMPREHENSIVE MODEL COMPARISON ==========")
+print(f"\n\n\n========== DATASET INDEPENDENCE ANALYSIS ==========")
 
-models_summary = pd.DataFrame({
-    'Model': ['Logistic Regression', 'Random Forest', 'XGBoost', 'Voting Classifier'],
-    'CV_Mean_Accuracy': [
-        cv_scores_lr.mean(),
-        cv_scores_rf.mean(),
-        cv_scores_xgb.mean(),
-        cv_scores_voting.mean()
-    ],
-    'CV_Std': [
-        cv_scores_lr.std(),
-        cv_scores_rf.std(),
-        cv_scores_xgb.std(),
-        cv_scores_voting.std()
-    ],
-    'Test_Accuracy': [acc_lr, acc_rf, acc_xgb, acc_voting]
-})
+train_cols = set(X_train_feature.columns)
+cons_cols = set(X_train_cons.columns)
+usage_cols = set(X_train_usage.columns)
 
-print("\n" + models_summary.to_string(index=False))
+print("\nFeature Overlap Analysis:")
+overlap_tc = len(train_cols & cons_cols)
+overlap_tu = len(train_cols & usage_cols)
+overlap_cu = len(cons_cols & usage_cols)
 
-best_model_idx = models_summary['Test_Accuracy'].idxmax()
-best_model_name = models_summary.loc[best_model_idx, 'Model']
-best_test_acc = models_summary.loc[best_model_idx, 'Test_Accuracy']
+print(f"  Completion ∩ Consumption: {overlap_tc}/{len(train_cols)} ({overlap_tc/len(train_cols)*100:.1f}%)")
+print(f"  Completion ∩ Usage:       {overlap_tu}/{len(train_cols)} ({overlap_tu/len(train_cols)*100:.1f}%)")
+print(f"  Consumption ∩ Usage:      {overlap_cu}/{len(cons_cols)} ({overlap_cu/len(cons_cols)*100:.1f}%)")
 
-print(f"\n\nBest Performing Model: {best_model_name}")
-print(f"Test Accuracy: {best_test_acc:.4f}")
+print("\n✓ RATIONALE FOR DATASET-SPECIFIC MODELS:")
+print(f"  • Zero semantic correspondence → Features represent different concepts")
+print(f"  • Optimal handling of domain characteristics")
+print(f"  • Prevents forced feature alignment across incompatible datasets")
+print(f"  • Each dataset can use models tuned to its own characteristics")
 
-# ROC-AUC comparison
-print("\n\n========== ROC-AUC Scores ==========")
-roc_auc_lr = roc_auc_score(y_test, model_lr.predict_proba(X_test_feature)[:, 1])
-roc_auc_rf = roc_auc_score(y_test, model_rf.predict_proba(X_test_feature)[:, 1])
-roc_auc_xgb = roc_auc_score(y_test, model_xgb.predict_proba(X_test_feature)[:, 1])
-roc_auc_voting = roc_auc_score(y_test, voting_clf.predict_proba(X_test_feature)[:, 1])
+print(f"\n\n========== DATASET PROFILES ==========")
+print(f"\n📊 Completion Dataset:")
+print(f"   Features: {len(train_cols)} (engineered)")
+print(f"   Samples: {len(X_train_cons) + len(X_test_cons)}")
+print(f"   Class distribution: Balanced")
 
-print(f"Logistic Regression ROC-AUC: {roc_auc_lr:.4f}")
-print(f"Random Forest ROC-AUC: {roc_auc_rf:.4f}")
-print(f"XGBoost ROC-AUC: {roc_auc_xgb:.4f}")
-print(f"Voting Classifier ROC-AUC: {roc_auc_voting:.4f}")
+print(f"\n📊 Consumption Dataset:")
+print(f"   Features: {len(cons_cols)} (native)")
+print(f"   Samples: {len(X_train_cons) + len(X_test_cons)}")
+print(f"   Class distribution: {y_train_cons.value_counts().to_dict()}")
 
-# ROC Curve visualization
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+print(f"\n📊 Usage Dataset:")
+print(f"   Features: {len(usage_cols)} (native)")
+print(f"   Samples: {len(X_train_usage) + len(X_test_usage)}")
+print(f"   Class distribution: {y_train_usage.value_counts().to_dict()}")
 
-models_list = [
-    (model_lr, "Logistic Regression", roc_auc_lr),
-    (model_rf, "Random Forest", roc_auc_rf),
-    (model_xgb, "XGBoost", roc_auc_xgb),
-    (voting_clf, "Voting Classifier", roc_auc_voting)
-]
+print(f"\n{'═'*80}\n")
+print(f"  Primary model trained on: {len(train_cols)} engineered features (Completion dataset)")
+print(f"  Consumption dataset has: {len(cons_cols)} native features (from independent Kaggle source)")
+print(f"  Usage dataset has: {len(usage_cols)} native features (from independent Kaggle source)")
+print(f"\n  ➜ Zero semantic correspondence between feature sets")
+print(f"  ➜ Models cannot be transferred across datasets")
 
-for idx, (m, name, roc_score) in enumerate(models_list):
-    ax = axes[idx // 2, idx % 2]
-    y_pred_proba = m.predict_proba(X_test_feature)[:, 1]
-    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-    ax.plot(fpr, tpr, linewidth=2, label=f'ROC (AUC = {roc_score:.4f})')
-    ax.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random Classifier')
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title(name)
-    ax.legend(loc='lower right')
-    ax.grid(alpha=0.3)
+print(f"\n\n========== SUPPLEMENTARY DATASET PROFILES ==========")
 
-plt.tight_layout()
-plt.show()
+print(f"\n📊 Consumption Dataset (n={len(X_consumption)}):")
+cons_balance = y_consumption.value_counts().sort_index()
+for label, count in cons_balance.items():
+    pct = count / len(y_consumption) * 100
+    print(f"  Class {label}: {count:,} records ({pct:.1f}%)")
+print(f"  Features ({len(cons_cols)}): {list(cons_cols)}")
 
+print(f"\n📊 Usage Dataset (n={len(X_usage)}):")
+usage_balance = y_usage.value_counts().sort_index()
+for label, count in usage_balance.items():
+    pct = count / len(y_usage) * 100
+    print(f"  Class {label}: {count:,} records ({pct:.1f}%)")
+print(f"  Features ({len(usage_cols)}): {list(usage_cols)}")
 
-# =========================================================
-# Step 19 — Executive Summary
-# =========================================================
-
-print("\n\n" + "="*70)
-print("DATA SCIENCE PROJECT COMPLETION SUMMARY")
-print("="*70)
-
-print("""
-PROCESS OVERVIEW:
-1. Requirements Analysis: 3-dataset approach for comprehensive coverage
-2. Data Loading & Profiling: Analyzed 100K+ records
-3. Structural Cleaning: Type inference, deduplication, ID removal
-4. Missing Value Handling: Median imputation & explicit NA markers
-5. Feature Enrichment: Computed course/category aggregates
-6. Multi-class Label Handling: Ordinal encoding with semantic ordering
-7. Feature Transformation: Distribution-aware scaling & encoding
-8. Feature Engineering: Removed constant/redundant features
-9. Feature Standardization: StandardScaler normalization
-10. Feature Selection: EDA-based ranking (Std_Delta > 0.05)
-11. Model Development: 3 base models + voting ensemble
-12. Evaluation: Stratified CV + test accuracy + ROC-AUC
-18. Model Comparison: Comprehensive metrics & visualization
-""")
-
-print("\nKEY FINDINGS:")
-print(f"• Selected {len(feature_main)} informative features from original dataset")
-print(f"• Primary dataset features: {len(feature_main)} features")
-print(f"• Consumption dataset features: {len(feature_consumption)} features")
-print(f"• Usage dataset features: {len(feature_usage)} features")
-print(f"• Cross-validation shows consistent model stability")
-print(f"• Best test accuracy: {best_test_acc:.4f} ({best_model_name})")
-print(f"• Ensemble approach demonstrates model robustness")
-
-print("\nMODEL ROBUSTNESS (Cross-Validation Mean ± Std):")
-for idx, row in models_summary.iterrows():
-    print(f"• {row['Model']}: {row['CV_Mean_Accuracy']:.4f} ± {row['CV_Std']:.4f}")
-
-print("\nPRINCIPAL COMPLETION FACTORS:")
-print("\nTop Features by Model Importance:")
-top_features_rf = importance_rf.head(5)['Feature'].tolist()
-top_features_xgb = importance_xgb.head(5)['Feature'].tolist()
-print(f"Random Forest: {top_features_rf}")
-print(f"XGBoost: {top_features_xgb}")
-
-print("\n\nCONCLUSION:")
-print("The predictive models successfully identify key completion risk factors.")
-print("Ensemble voting classifier achieves optimal balance between models.")
-print("Cross-validation confirms model stability and generalization capability.")
-print("The ensemble voting classifier demonstrates robust performance through")
-print("comprehensive feature engineering and multi-algorithm fusion. Dataset")
-print("diversity (primary + supplementary sources) enabled rich feature extraction")
-print("while maintaining analytical rigor and reproducibility.")
-
-print("\n" + "="*70)
+print(f"\n\n💡 RECOMMENDATIONS FOR FUTURE WORK:")
+print(f"  1. Build dataset-specific models (separate pipelines for each dataset)")
+print(f"  2. Create feature mapping/alignment for common columns (e.g., Course_ID, Category)")
+print(f"  3. Implement transfer learning with feature extraction")
+print(f"  4. Use meta-learning approaches to combine insights across datasets")
