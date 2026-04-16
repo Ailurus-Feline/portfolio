@@ -1308,17 +1308,38 @@ def train_single(model, X_train, y_train, X_test, y_test, model_name: str,
     report = classification_report(y_test, y_pred)
     
     print_evaluation(f"{dataset_name} - {model_name}", acc, report)
-    plot_confusion_matrix(cm, f"{dataset_name} - {model_name}", 
-                         {"lr": "Blues", "rf": "Greens", "xgb": "Oranges", "voting": "RdYlGn"}.get(model_name.lower().split()[0][:2], "Blues"))
+    
+    # Determine colormap based on model type
+    model_lower = model_name.lower()
+    if "logistic" in model_lower:
+        cm_cmap = "Blues"
+    elif "random" in model_lower:
+        cm_cmap = "Greens"
+    elif "xgb" in model_lower:
+        cm_cmap = "Oranges"
+    elif "voting" in model_lower:
+        cm_cmap = "RdYlGn"
+    else:
+        cm_cmap = "Blues"
+    
+    plot_confusion_matrix(cm, f"{dataset_name} - {model_name}", cm_cmap)
     
     # Feature importance/coefficients
     if hasattr(model, 'coef_'):  # LR
         importance_df = plot_feature_importance(X_train.columns, model.coef_[0],
                                                f"{dataset_name} - {model_name}", "steelblue")
     elif hasattr(model, 'feature_importances_'):  # RF, XGB
+        # Determine color based on model type
+        if "random" in model_lower:
+            importance_color = "forestgreen"
+        elif "xgb" in model_lower:
+            importance_color = "coral"
+        else:
+            importance_color = "steelblue"
+        
         importance_df = plot_feature_importance(X_train.columns, model.feature_importances_,
                                                f"{dataset_name} - {model_name}",
-                                               {"rf": "forestgreen", "xgb": "coral"}.get(model_name.lower().split()[0][:2], "steelblue"))
+                                               importance_color)
     elif hasattr(model, 'named_estimators_'):  # Voting - skip visualization
         importance_df = pd.DataFrame()
     else:
