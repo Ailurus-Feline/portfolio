@@ -155,7 +155,7 @@ def show(s: pd.DataFrame) -> None:
 
     # Label distribution
     # Special handling for df_usage (continuous to binary conversion for visualization)
-    if "Usange" not in s._name and s[s._label].nunique() > 2:
+    if "Usange" in s._name and s[s._label].nunique() > 2:
         viz_label = (s[s._label] >= s[s._label].median()).astype(int)
         tmp_col = viz_label.value_counts()
     else:
@@ -194,8 +194,8 @@ def show(s: pd.DataFrame) -> None:
         ax.set_title(f"{l} Distribution")
         plt.show()
 
-for df in dfs:
-    show(df)
+#for df in dfs:
+    #show(df)
 
 
 
