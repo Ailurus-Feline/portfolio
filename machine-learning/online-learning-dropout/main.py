@@ -194,8 +194,8 @@ def show(s: pd.DataFrame) -> None:
         ax.set_title(f"{l} Distribution")
         plt.show()
 
-#for df in dfs:
-    #show(df)
+for df in dfs:
+    show(df)
 
 
 
