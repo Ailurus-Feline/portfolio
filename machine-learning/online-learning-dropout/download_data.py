@@ -5,7 +5,7 @@ from pathlib import Path
 DATASETS = [
     "nisargpatel344/student-course-completion-prediction-dataset",
     "prince7489/online-learning-and-course-consumption-dataset",
-    "mitul1999/online-courses-usage-and-history-dataset",
+    "thedevastator/online-course-student-engagement-metrics",
 ]
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
