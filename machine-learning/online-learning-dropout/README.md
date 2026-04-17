@@ -26,9 +26,11 @@ It integrates multiple datasets containing **learner profiles**, **course attrib
 
 ## **Datasets**
 
-This project uses **three datasets**:
+This project uses **three Kaggle datasets** (the same list defined in `download_data.py`):
 
-### **1. Course Completion Prediction (Primary Dataset)**
+### **1. Student Course Completion Prediction Dataset (Primary Dataset)**
+
+Source: https://www.kaggle.com/datasets/nisargpatel344/student-course-completion-prediction-dataset
 
 **Main feature groups**
 - **Learner profile:** Age, Education, Experience Level  
@@ -38,14 +40,18 @@ This project uses **three datasets**:
 **Target variable**
 - **Completed**
 
-### **2. Online Learning Course Consumption Dataset**
+### **2. Online Learning and Course Consumption Dataset**
+
+Source: https://www.kaggle.com/datasets/prince7489/online-learning-and-course-consumption-dataset
 
 **Main feature groups**
 - **Engagement intensity:** Hours spent per week, session duration  
 - **Consumption behavior:** content usage patterns, completion-related metrics  
 - **Outcome fields:** completion status / percentage  
 
-### **3. Online Courses Usage Dataset**
+### **3. Online Course Student Engagement Metrics Dataset**
+
+Source: https://www.kaggle.com/datasets/thedevastator/online-course-student-engagement-metrics
 
 **Main feature groups**
 - **Course information:** category-level attributes  
@@ -123,6 +129,22 @@ pip install pandas numpy scikit-learn xgboost matplotlib seaborn
 ```
 
 ### **Download datasets**
+
+`download_data.py` will:
+
+1. Delete the existing `data/` directory (if it exists)
+2. Recreate `data/Raw/`
+3. Download and unzip all three Kaggle datasets into `data/Raw/`
+
+Before running it, make sure Kaggle CLI is installed and authenticated.
+
+Install Kaggle package:
+
+```bash
+pip install kaggle
+```
+
+Set up API credentials (create `~/.kaggle/kaggle.json` from your Kaggle account API token), then run:
 
 ```bash
 python download_data.py
