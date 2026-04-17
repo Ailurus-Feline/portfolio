@@ -81,13 +81,13 @@ def save_data(s: pd.DataFrame, status: str = '') -> None:
 # Load datasets and assign labels
 df_completion = load_data("Completion", "Course_Completion_Prediction.csv")
 df_consumption = load_data("Consumption", "online_learning_course_consumption_dataset.csv")
-df_usage = load_data("Usage", "online_courses_uses.csv")
+df_course = load_data("Course", "Courses.csv")
 
 df_completion._label = "Completed"
 df_consumption._label = "Completion_Status"
-df_usage._label = "Completion_Rate (%)"
+df_course._label = "incomplete_flag"
 
-dfs = [df_completion, df_consumption, df_usage]
+dfs = [df_completion, df_consumption, df_course]
 
 
 
@@ -154,12 +154,7 @@ def show(s: pd.DataFrame) -> None:
     num_col, str_col = get_cols(s)
 
     # Label distribution
-    # Special handling for df_usage (continuous to binary conversion for visualization)
-    if "Usange" in s._name and s[s._label].nunique() > 2:
-        viz_label = (s[s._label] >= s[s._label].median()).astype(int)
-        tmp_col = viz_label.value_counts()
-    else:
-        tmp_col = s[s._label].value_counts()
+    tmp_col = s[s._label].value_counts()
     
     fig, ax = plt.subplots(figsize=FIG_SIZE)
     fig.canvas.manager.set_window_title(s._name)
@@ -225,7 +220,7 @@ def check_balance(label_cnt: pd.Series, name: str) -> None:
     if len(label_cnt) == 2:
         ratio = label_cnt.iloc[0] / label_cnt.iloc[1]
         imbalance = max(ratio, 1 / ratio)
-        print(f"Class imbalance ratio: {imbalance:.2f}:1")
+        print(f"\nClass imbalance ratio: {imbalance:.2f}:1")
         if imbalance > 2:
             print(f"Significant class imbalance in {name}!")
 
@@ -248,17 +243,13 @@ def assess_quality(s: pd.DataFrame) -> None:
         for col, count in missing_col.head(10).items():
             print(f"    - {col}: {count:,} ({count / row_cnt * 100:.1f}%)")
     
-    # Handle labels
-    if "Usange" not in s._name and s[s._label].nunique() > 2:
-        pass
-    else:
-        label_cnt = s[s._label].value_counts()
-        # Class balance check
-        check_balance(label_cnt, s._name)
+    # Class balance check
+    label_cnt = s[s._label].value_counts()
+    check_balance(label_cnt, s._name)
 
     # Feature diversity
     num_col, str_col = get_cols(s)
-    print(f"Feature Diversity:")
+    print(f"\nFeature Diversity:")
     print(f"    - Numeric features: {len(num_col)}")
     print(f"    - Categorical features: {len(str_col)}")
     
@@ -284,10 +275,9 @@ df_consumption.drop(df_consumption[df_consumption[df_consumption._label].str.low
 df_consumption[df_consumption._label] = (df_consumption[df_consumption._label].str.lower() == "completed").astype(int)
 save_data(df_consumption, "Binary_Label")
 
-# df_usage: continuous percentage → binary using median threshold
-threshold_usage = df_usage[df_usage._label].median()
-df_usage[df_usage._label] = (df_usage[df_usage._label] >= threshold_usage).astype(int)
-save_data(df_usage, "Binary_Label")
+# df_course: binary values (null: completed, 1.0: incomplete) → fill missing with 0
+df_course[df_course._label] = df_course[df_course._label].fillna(0)
+save_data(df_course, "Binary_Label")
 
 # Verify distributions after binarization
 print("\n\n\n")
@@ -353,7 +343,7 @@ def set_col_type(s: pd.DataFrame) -> list[str]:
             continue
 
         # detect ID-like columns (high uniqueness)
-        if tmp_col.nunique() > len(s) * RATIO:
+        if tmp_col.nunique() > tmp_col.count() * RATIO:
             id_cols.append(l)
     
     return id_cols
@@ -398,20 +388,20 @@ init_df(test_consumption, "Test_Consumption", DATA_DIR / "Processed" / "Consumpt
 save_data(train_consumption)
 save_data(test_consumption)
 
-train_usage, test_usage = train_test_split(
-    df_usage,
+train_course, test_course = train_test_split(
+    df_course,
     test_size=0.2,
     random_state=42,
-    stratify=df_usage[df_usage._label]
+    stratify=df_course[df_course._label]
 )
 
-init_df(train_usage, "Train_Usage", DATA_DIR / "Processed" / "Usage" / "Train", df_usage._label)
-init_df(test_usage, "Test_Usage", DATA_DIR / "Processed" / "Usage" / "Test", df_usage._label)
+init_df(train_course, "Train_Course", DATA_DIR / "Processed" / "Course" / "Train", df_course._label)
+init_df(test_course, "Test_Course", DATA_DIR / "Processed" / "Course" / "Test", df_course._label)
 
-save_data(train_usage)
-save_data(test_usage)
+save_data(train_course)
+save_data(test_course)
 
-dfs = [train_completion, train_consumption, train_usage]
+dfs = [train_completion, train_consumption, train_course]
 
 
 
@@ -421,18 +411,18 @@ dfs = [train_completion, train_consumption, train_usage]
 # - align test schema with train
 # =========================================================
 
-def deal_na(s: pd.DataFrame, rule: dict[str, float] = None) -> dict[str, float]:
+def deal_na(s: pd.DataFrame, rule: dict = None) -> dict:
     """
     Missing value handling: fill numeric/categorical and remove empty rows/columns.
     
     Strategy:
     - Numeric: median imputation
-    - Categorical: explicit NA marker
+    - Categorical: explicit "Missing" marker
     - Empty rows/columns: removal
     
     Parameters:
         s (DataFrame)
-        rule (dict): pre-computed fill values from training set
+        rule (dict): pre-computed fill values and vocab from training set
     """
     print(f"\n\n\n========== {s._name} NA Handling ==========")
 
@@ -451,13 +441,13 @@ def deal_na(s: pd.DataFrame, rule: dict[str, float] = None) -> dict[str, float]:
             rule[l] = s[l].median()
         s[l] = s[l].fillna(rule[l])
     
-    # Categorical: mark missing explicitly
+    # Categorical: fill NaN with "Missing"
     print("\nCategorical NA counts: ")
     for l in str_col:
         na_cnt = s[l].isna().sum()
         if na_cnt > 0:
             print(f"    - {l}: {na_cnt}")
-        s[l] = s[l].fillna(pd.NA)
+        s[l] = s[l].fillna("Missing")
     
     # Remove completely empty rows/columns
     s.dropna(axis=1, how="all", inplace=True)
@@ -468,24 +458,24 @@ def deal_na(s: pd.DataFrame, rule: dict[str, float] = None) -> dict[str, float]:
 # Compute NA rules from training sets
 na_rule_completion = deal_na(train_completion)
 na_rule_consumption = deal_na(train_consumption)
-na_rule_usage = deal_na(train_usage)
+na_rule_course = deal_na(train_course)
 
 # Apply same rules to corresponding test sets
 deal_na(test_completion, na_rule_completion)
 deal_na(test_consumption, na_rule_consumption)
-deal_na(test_usage, na_rule_usage)
+deal_na(test_course, na_rule_course)
 
 # Align test columns with train
 test_completion.drop(columns=test_completion.columns.difference(train_completion.columns), inplace=True)
 test_consumption.drop(columns=test_consumption.columns.difference(train_consumption.columns), inplace=True)
-test_usage.drop(columns=test_usage.columns.difference(train_usage.columns), inplace=True)
+test_course.drop(columns=test_course.columns.difference(train_course.columns), inplace=True)
 
 save_data(train_completion, "No_NA")
 save_data(test_completion, "No_NA")
 save_data(train_consumption, "No_NA")
 save_data(test_consumption, "No_NA")
-save_data(train_usage, "No_NA")
-save_data(test_usage, "No_NA")
+save_data(train_course, "No_NA")
+save_data(test_course, "No_NA")
 
 
 
@@ -603,42 +593,47 @@ def enrich(s: pd.DataFrame, stats: dict = None) -> dict:
         ).round(3)
         print("engagement_intensity")
     
-    # ===== df_usage Features =====
-    # Price-Duration Efficiency
-    if all(l in s.columns for l in ["Price ($)", "Duration (hours)"]):
-        s["price_per_hour"] = (
-            s["Price ($)"] / (s["Duration (hours)"] + 1)
+    # ===== df_course Features =====
+    # Video Engagement per Chapter
+    if all(l in s.columns for l in ["nplay_video", "nchapters"]):
+        s["video_per_chapter"] = (
+            s["nplay_video"] / (s["nchapters"] + 1)
         ).round(3)
-        print("price_per_hour")
+        print("video_per_chapter")
     
-    # Course Value Proposition (Rating weighted by enrollment)
-    if all(l in s.columns for l in ["Enrolled_Students", "Rating (out of 5)", "Completion_Rate (%)"]):
-        s["value_score"] = (
-            (s["Enrolled_Students"] / max(stats.get("max_enrolled", s["Enrolled_Students"].max()), 1)) * 0.3 +
-            (s["Rating (out of 5)"] / 5) * 0.4 +
-            (s["Completion_Rate (%)"] / 100) * 0.3
+    # Forum Activity per Active Day
+    if all(l in s.columns for l in ["nforum_posts", "ndays_act"]):
+        s["forum_per_day"] = (
+            s["nforum_posts"] / (s["ndays_act"] + 1)
         ).round(3)
-        print("value_score")
+        print("forum_per_day")
+    
+    # Overall Participation Score (normalized by total events)
+    if all(l in s.columns for l in ["nplay_video", "nforum_posts", "nevents"]):
+        s["participation_ratio"] = (
+            (s["nplay_video"] + s["nforum_posts"]) / (s["nevents"] + 1)
+        ).round(3)
+        print("participation_ratio")
     
     return stats
 
 # Compute enrichment statistics from training sets
 train_stats_completion = enrich(train_completion)
 train_stats_consumption = enrich(train_consumption)
-train_stats_usage = enrich(train_usage)
+train_stats_course = enrich(train_course)
 
 # Apply same rules to corresponding test datasets
 enrich(test_completion, train_stats_completion)
 enrich(test_consumption, train_stats_consumption)
-enrich(test_usage, train_stats_usage)
+enrich(test_course, train_stats_course)
 
 
 save_data(train_completion, "Enriched")
 save_data(test_completion, "Enriched")
 save_data(train_consumption, "Enriched")
 save_data(test_consumption, "Enriched")
-save_data(train_usage, "Enriched")
-save_data(test_usage, "Enriched")
+save_data(train_course, "Enriched")
+save_data(test_course, "Enriched")
 
 
 
@@ -727,6 +722,7 @@ def scale(s: pd.DataFrame, map: dict[str, tuple] = None) -> dict[str, tuple]:
     Returns:
         map (dict): transformation rules for this dataset
     """
+    print(f"\n\n\n========== {s._name} Feature Scaling ==========")
     num_col, _ = get_cols(s)
     
     if map:
@@ -750,8 +746,6 @@ def scale(s: pd.DataFrame, map: dict[str, tuple] = None) -> dict[str, tuple]:
 
     # Compute rules from training data
     map = {}
-    
-    print(f"\n\n\n========== {s._name} Feature Scaling ==========")
     print("Distribution: ")
 
     for l in num_col:
@@ -798,12 +792,12 @@ def scale(s: pd.DataFrame, map: dict[str, tuple] = None) -> dict[str, tuple]:
 # Compute scaling rules from training sets
 scale_map_completion = scale(train_completion)
 scale_map_consumption = scale(train_consumption)
-scale_map_usage = scale(train_usage)
+scale_map_course = scale(train_course)
 
 # Apply same rules to corresponding test datasets
 scale(test_completion, scale_map_completion)
 scale(test_consumption, scale_map_consumption)
-scale(test_usage, scale_map_usage)
+scale(test_course, scale_map_course)
 
 
 def encoding(s: pd.DataFrame, map: dict = None) -> tuple:
@@ -818,24 +812,24 @@ def encoding(s: pd.DataFrame, map: dict = None) -> tuple:
         s (DataFrame)
         map (dict): transformation rules from train_df
     """
+    print(f"\n\n\n========== {s._name} Feature Encoding ==========")
     _, str_col = get_cols(s)
-    str_col = [l for l in str_col if l != s._label]
     
     if map:
         # Apply previous encoding rules
         for l in str_col:
             mapping = map[l]
-            s[l] = s[l].fillna("Missing").map(mapping)
+            median = np.median(list(mapping.values()))
+
+            s[l] = s[l].map(mapping).fillna(median).astype(int)
         return map
     
     # Compute encoding rules from training data
     map = {}
-    
-    print(f"\n\n\n========== {s._name} Feature Encoding ==========")
     print("Cardinality: ")
 
     for l in str_col:
-        col = s[l].fillna("Missing").astype(str)
+        col = s[l].astype(str)
         card = which_card(col)
         print(f"    - {l}: {card}")
 
@@ -848,7 +842,7 @@ def encoding(s: pd.DataFrame, map: dict = None) -> tuple:
         # Frequency encoding for high-cardinality features
         else:
             freq = col.value_counts(normalize=True)
-            map[l] = freq
+            map[l] = freq.to_dict()
             s[l] = col.map(freq)
     
     return map
@@ -856,19 +850,20 @@ def encoding(s: pd.DataFrame, map: dict = None) -> tuple:
 # Compute encoding rules from training sets
 encoding_map_completion = encoding(train_completion)
 encoding_map_consumption = encoding(train_consumption)
-encoding_map_usage = encoding(train_usage)
+encoding_map_course = encoding(train_course)
 
 # Apply same rules to corresponding test datasets
 encoding(test_completion, encoding_map_completion)
 encoding(test_consumption, encoding_map_consumption)
-encoding(test_usage, encoding_map_usage)
+encoding(test_course, encoding_map_course)
+
 
 save_data(train_completion, "Scaled")
 save_data(test_completion, "Scaled")
 save_data(train_consumption, "Scaled")
 save_data(test_consumption, "Scaled")
-save_data(train_usage, "Scaled")
-save_data(test_usage, "Scaled")
+save_data(train_course, "Scaled")
+save_data(test_course, "Scaled")
 
 
 
@@ -895,11 +890,8 @@ def drop_constant(s: pd.DataFrame) -> pd.DataFrame:
 
 # Remove constant columns from all datasets
 drop_constant(train_completion)
-drop_constant(test_completion)
 drop_constant(train_consumption)
-drop_constant(test_consumption)
-drop_constant(train_usage)
-drop_constant(test_usage)
+drop_constant(train_course)
 
 
 def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
@@ -945,22 +937,20 @@ def drop_redundant(s: pd.DataFrame) -> pd.DataFrame:
 
 # Remove redundant columns from all datasets
 drop_redundant(train_completion)
-drop_redundant(test_completion)
 drop_redundant(train_consumption)
-drop_redundant(test_consumption)
+drop_redundant(train_course)
 
 # Ensure test schema matches train for each dataset
 test_completion.drop(columns=test_completion.columns.difference(train_completion.columns), inplace=True)
 test_consumption.drop(columns=test_consumption.columns.difference(train_consumption.columns), inplace=True)
-test_usage.drop(columns=test_usage.columns.difference(train_usage.columns), inplace=True)
+test_course.drop(columns=test_course.columns.difference(train_course.columns), inplace=True)
 
 save_data(train_completion, "Dropped")
 save_data(test_completion, "Dropped")
 save_data(train_consumption, "Dropped")
 save_data(test_consumption, "Dropped")
-save_data(train_usage, "Dropped")
-save_data(test_usage, "Dropped")
-
+save_data(train_course, "Dropped")
+save_data(test_course, "Dropped")
 
 
 # =========================================================
@@ -1009,59 +999,50 @@ save_data(X_test_consumption)
 save_data(y_test_consumption)
 
 
-# ===== DATASET 3: USAGE =====
+# ===== DATASET 3: COURSE =====
 # Separate features from labels
-X_train_usage = train_usage.drop(columns=[train_usage._label])
-y_train_usage = train_usage[train_usage._label]
+X_train_course = train_course.drop(columns=[train_course._label])
+y_train_course = train_course[train_course._label]
 
-init_df(X_train_usage, "X_train_usage", train_usage._dir / "X_train")
-init_df(y_train_usage, "y_train_usage", train_usage._dir / "y_train")
+init_df(X_train_course, "X_train_course", train_course._dir / "X_train")
+init_df(y_train_course, "y_train_course", train_course._dir / "y_train")
 
-X_test_usage = test_usage.drop(columns=[test_usage._label])
-y_test_usage = test_usage[test_usage._label]
+X_test_course = test_course.drop(columns=[test_course._label])
+y_test_course = test_course[test_course._label]
 
-init_df(X_test_usage, "X_test_usage", test_usage._dir / "X_test")
-init_df(y_test_usage, "y_test_usage", test_usage._dir / "y_test")
+init_df(X_test_course, "X_test_course", test_course._dir / "X_test")
+init_df(y_test_course, "y_test_course", test_course._dir / "y_test")
 
-save_data(X_train_usage)
-save_data(y_train_usage)
-save_data(X_test_usage)
-save_data(y_test_usage)
+save_data(X_train_course)
+save_data(y_train_course)
+save_data(X_test_course)
+save_data(y_test_course)
 
 
 # Feature standardization for all datasets
 # ===== COMPLETION =====
-num_train_completion, _ = get_cols(X_train_completion)
-num_test_completion, _ = get_cols(X_test_completion)
-
 completion_scaler = StandardScaler()
-X_train_completion[num_train_completion] = completion_scaler.fit_transform(X_train_completion[num_train_completion])
-X_test_completion[num_test_completion] = completion_scaler.transform(X_test_completion[num_test_completion])
+X_train_completion[X_train_completion.columns] = completion_scaler.fit_transform(X_train_completion)
+X_test_completion[X_test_completion.columns] = completion_scaler.transform(X_test_completion)
 
 save_data(X_train_completion, "Transformed")
 save_data(X_test_completion, "Transformed")
 
 # ===== CONSUMPTION =====
-num_train_consumption, _ = get_cols(X_train_consumption)
-num_test_consumption, _ = get_cols(X_test_consumption)
-
 consumption_scaler = StandardScaler()
-X_train_consumption[num_train_consumption] = consumption_scaler.fit_transform(X_train_consumption[num_train_consumption])
-X_test_consumption[num_test_consumption] = consumption_scaler.transform(X_test_consumption[num_test_consumption])
+X_train_consumption[X_train_consumption.columns] = consumption_scaler.fit_transform(X_train_consumption)
+X_test_consumption[X_test_consumption.columns] = consumption_scaler.transform(X_test_consumption)
 
 save_data(X_train_consumption, "Transformed")
 save_data(X_test_consumption, "Transformed")
 
-# ===== USAGE =====
-num_train_usage, _ = get_cols(X_train_usage)
-num_test_usage, _ = get_cols(X_test_usage)
+# ===== COURSE =====
+course_scaler = StandardScaler()
+X_train_course[X_train_course.columns] = course_scaler.fit_transform(X_train_course)
+X_test_course[X_test_course.columns] = course_scaler.transform(X_test_course)
 
-usage_scaler = StandardScaler()
-X_train_usage[num_train_usage] = usage_scaler.fit_transform(X_train_usage[num_train_usage])
-X_test_usage[num_test_usage] = usage_scaler.transform(X_test_usage[num_test_usage])
-
-save_data(X_train_usage, "Transformed")
-save_data(X_test_usage, "Transformed")
+save_data(X_train_course, "Transformed")
+save_data(X_test_course, "Transformed")
 
 # =========================================================
 # Step 11 — Feature Selection (EDA-driven)
@@ -1117,14 +1098,14 @@ def feature_rank(s: pd.DataFrame) -> list[str]:
 # Compute feature rankings for all datasets
 feature_completion = feature_rank(train_completion)
 feature_consumption = feature_rank(train_consumption)
-feature_usage = feature_rank(train_usage)
+feature_course = feature_rank(train_course)
 
 # Visualization
 fig, ax = plt.subplots(figsize=FIG_SIZE)
 info = pd.DataFrame({
-    "Dataset": ["Completion", "Consumption", "Usage"],
-    "Total Features": [len(train_completion.columns) - 1, len(train_consumption.columns) - 1, len(train_usage.columns) - 1],
-    "Selected Features": [len(feature_completion), len(feature_consumption), len(feature_usage)]
+    "Dataset": ["Completion", "Consumption", "Course"],
+    "Total Features": [len(train_completion.columns) - 1, len(train_consumption.columns) - 1, len(train_course.columns) - 1],
+    "Selected Features": [len(feature_completion), len(feature_consumption), len(feature_course)]
 })
 info["Retention Rate"] = (info["Selected Features"] / info["Total Features"] * 100).round(1)
 
@@ -1247,21 +1228,21 @@ save_data(X_train_consumption_feature, "Features")
 save_data(X_test_consumption_feature, "Features")
 
 
-# ===== DATASET 3: USAGE =====
+# ===== DATASET 3: COURSE =====
 # Feature selection
-X_train_usage_feature = X_train_usage[feature_usage]
-X_test_usage_feature = X_test_usage[feature_usage]
+X_train_course_feature = X_train_course[feature_course]
+X_test_course_feature = X_test_course[feature_course]
 
-init_df(X_train_usage_feature, "X_train_usage_feature", X_train_usage._dir)
-init_df(X_test_usage_feature, "X_test_usage_feature", X_test_usage._dir)
+init_df(X_train_course_feature, "X_train_course_feature", X_train_course._dir)
+init_df(X_test_course_feature, "X_test_course_feature", X_test_course._dir)
 
-save_data(X_train_usage_feature, "Features")
-save_data(X_test_usage_feature, "Features")
+save_data(X_train_course_feature, "Features")
+save_data(X_test_course_feature, "Features")
 
 print(f"\n========== Cross-Validation Datasets ==========")
 print(f"Completion: {X_train_completion_feature.shape[0]} train, {X_test_completion_feature.shape[0]} test, {len(feature_completion)} features")
 print(f"Consumption: {X_train_consumption_feature.shape[0]} train, {X_test_consumption_feature.shape[0]} test, {len(feature_consumption)} features")
-print(f"Usage: {X_train_usage_feature.shape[0]} train, {X_test_usage_feature.shape[0]} test, {len(feature_usage)} features")
+print(f"Course: {X_train_course_feature.shape[0]} train, {X_test_course_feature.shape[0]} test, {len(feature_course)} features")
 
 # Cross-validation configuration
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
@@ -1386,8 +1367,11 @@ def train_all(X_train, y_train, X_test, y_test, name: str, cv = None) -> dict:
     
     # ===== XGBoost =====
     print(f"\n========== XGBoost ==========")
+    # Dynamically set scale_pos_weight for imbalanced data
+    class_counts = y_train.value_counts()
+    scale_pos_weight = class_counts[0] / class_counts[1] if len(class_counts) > 1 else 1
     xgb = XGBClassifier(n_estimators=600, learning_rate=0.05, max_depth=5, 
-                        subsample=0.9, colsample_bytree=0.9, scale_pos_weight=1,
+                        subsample=0.9, colsample_bytree=0.9, scale_pos_weight=scale_pos_weight,
                         random_state=42, eval_metric="logloss", n_jobs=-1)
     results["xgb"] = train_single(xgb, X_train, y_train, X_test, y_test,
                                         "XGBoost", name, cv)
@@ -1409,8 +1393,8 @@ results_completion = train_all(X_train_completion_feature, y_train_completion, X
                                       "Completion", cv=skf)
 results_consumption = train_all(X_train_consumption_feature, y_train_consumption, X_test_consumption_feature, y_test_consumption,
                                        "Consumption", cv=skf)
-results_usage = train_all(X_train_usage_feature, y_train_usage, X_test_usage_feature, y_test_usage,
-                                 "Usage", cv=skf)
+results_course = train_all(X_train_course_feature, y_train_course, X_test_course_feature, y_test_course,
+                                 "Course", cv=skf)
 
 
 
@@ -1428,7 +1412,7 @@ print(f"{'═'*80}\n")
 comparison_data = []
 for name, results in [("Completion", results_completion), 
                               ("Consumption", results_consumption), 
-                              ("Usage", results_usage)]:
+                              ("Course", results_course)]:
     for model_key, result in results.items():
         row = {
             "Dataset": name,
@@ -1444,7 +1428,7 @@ print(comparison_df.to_string(index=False))
 
 # Best model per dataset
 print(f"\n\n{'─'*80}\nBEST MODEL PER DATASET:\n{'─'*80}")
-for dataset_name in ["Completion", "Consumption", "Usage"]:
+for dataset_name in ["Completion", "Consumption", "Course"]:
     dataset_results = comparison_df[comparison_df["Dataset"] == dataset_name]
     best_idx = dataset_results["Test_Accuracy"].idxmax()
     best_row = dataset_results.loc[best_idx]
@@ -1457,7 +1441,7 @@ roc_data = []
 for dataset_name, X_test, y_test, results in [
     ("Completion", X_test_completion_feature, y_test_completion, results_completion),
     ("Consumption", X_test_consumption_feature, y_test_consumption, results_consumption),
-    ("Usage", X_test_usage_feature, y_test_usage, results_usage)
+    ("Course", X_test_course_feature, y_test_course, results_course)
 ]:
     for model_key, result in results.items():
         if hasattr(result["model"], 'predict_proba'):
@@ -1469,7 +1453,7 @@ for dataset_name, X_test, y_test, results in [
             })
 
 roc_df = pd.DataFrame(roc_data)
-for dataset_name in ["Completion", "Consumption", "Usage"]:
+for dataset_name in ["Completion", "Consumption", "Course"]:
     subset = roc_df[roc_df["Dataset"] == dataset_name]
     print(f"{dataset_name}:")
     for _, row in subset.iterrows():
@@ -1492,18 +1476,18 @@ print(f"{'═'*80}\n")
 
 train_cols = set(X_train_completion_feature.columns)
 cons_cols = set(X_train_consumption_feature.columns)
-usage_cols = set(X_train_usage_feature.columns)
+course_cols = set(X_train_course_feature.columns)
 
 overlap_tc = len(train_cols & cons_cols)
-overlap_tu = len(train_cols & usage_cols)
-overlap_cu = len(cons_cols & usage_cols)
+overlap_tu = len(train_cols & course_cols)
+overlap_cu = len(cons_cols & course_cols)
 
 print(f"Feature Overlap:")
 print(f"  Completion ∩ Consumption: {overlap_tc} / {len(train_cols)} ({overlap_tc / len(train_cols) * 100:.1f}%)")
-print(f"  Completion ∩ Usage:       {overlap_tu} / {len(train_cols)} ({overlap_tu / len(train_cols) * 100:.1f}%)")
-print(f"  Consumption ∩ Usage:      {overlap_cu} / {len(cons_cols)} ({overlap_cu / len(cons_cols) * 100:.1f}%)")
+print(f"  Completion ∩ Course:       {overlap_tu} / {len(train_cols)} ({overlap_tu / len(train_cols) * 100:.1f}%)")
+print(f"  Consumption ∩ Course:      {overlap_cu} / {len(cons_cols)} ({overlap_cu / len(cons_cols) * 100:.1f}%)")
 print(f"\nFeature Dimensions:")
-print(f"  Completion: {len(train_cols)} | Consumption: {len(cons_cols)} | Usage: {len(usage_cols)}")
+print(f"  Completion: {len(train_cols)} | Consumption: {len(cons_cols)} | Course: {len(course_cols)}")
 
 
 
@@ -1518,16 +1502,16 @@ print(f"Executive Summary")
 print(f"{'═'*80}\n")
 
 # Datasets summary
-print("Datasets: Completion ({} feat, {} train) | Consumption ({} feat, {} train) | Usage ({} feat, {} train)".format(
+print("Datasets: Completion ({} feat, {} train) | Consumption ({} feat, {} train) | Course ({} feat, {} train)".format(
     len(feature_completion), len(X_train_completion_feature),
     len(feature_consumption), len(X_train_consumption_feature),
-    len(feature_usage), len(X_train_usage_feature)))
+    len(feature_course), len(X_train_course_feature)))
 
 # Model performance
 best_completion = comparison_df[comparison_df["Dataset"] == "Completion"]["Test_Accuracy"].max()
 best_consumption = comparison_df[comparison_df["Dataset"] == "Consumption"]["Test_Accuracy"].max()
-best_usage = comparison_df[comparison_df["Dataset"] == "Usage"]["Test_Accuracy"].max()
-avg_acc = (best_completion + best_consumption + best_usage) / 3
+best_course = comparison_df[comparison_df["Dataset"] == "Course"]["Test_Accuracy"].max()
+avg_acc = (best_completion + best_consumption + best_course) / 3
 
-print(f"\nBest Accuracy: Completion {best_completion:.4f} | Consumption {best_consumption:.4f} | Usage {best_usage:.4f} | Avg {avg_acc:.4f}")
+print(f"\nBest Accuracy: Completion {best_completion:.4f} | Consumption {best_consumption:.4f} | Course {best_course:.4f} | Avg {avg_acc:.4f}")
 print(f"\n{'═'*80}")
