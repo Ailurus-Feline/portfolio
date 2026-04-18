@@ -26,6 +26,7 @@ public abstract class Player extends Combatant {
      */
     @Override
     public void turnEnd() {
+        super.turnEnd();
         if (cooldown > 0) {
             cooldown--;
         }

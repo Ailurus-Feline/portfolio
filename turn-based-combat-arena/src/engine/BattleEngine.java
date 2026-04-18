@@ -86,7 +86,6 @@ public class BattleEngine {
 
                 if (actor.isFrozen()) {
                     ui.printSkipTurn(actor);
-                    actor.turnEnd();
                     continue;
                 }
 
@@ -98,11 +97,13 @@ public class BattleEngine {
                     action.execute(actor, player, player, enemies, ui);
                 }
 
-                actor.turnEnd();
-
                 if (!player.isAlive() || !hasAlive(enemies)) {
                     break;
                 }
+            }
+
+            for (Combatant actor : turnOrder) {
+                actor.turnEnd();
             }
 
             round++;
