@@ -8,3 +8,6 @@ figures/*
 kaggle.json
 __pycache__/
 .vscode/
+
+# CQF Exam 3 paper (do not redistribute exam materials)
+certification-projects/CQF/exam3/Exam 3 - Main Jan 26.pdf

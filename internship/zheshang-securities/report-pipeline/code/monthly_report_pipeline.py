@@ -127,6 +127,9 @@ class LocalEtfFetchResult:
 
 
 class LocalDataClient:
+    DATE_ALIASES = ("date", "日期", "交易日期")
+    CLOSE_ALIASES = ("close", "收盘价(元)", "收盘价", "收盘")
+
     def __init__(self, paths: ProjectPaths):
         self.paths = paths
         self.root = paths.data_dir / "local_sources"
@@ -152,14 +155,40 @@ class LocalDataClient:
     def _empty_result(self) -> LocalTabularResult:
         return LocalTabularResult(pd.DataFrame(), ErrorCode=1, ErrMsg="本地数据未找到")
 
+    def _find_matching_column(self, df: pd.DataFrame, aliases: tuple[str, ...]) -> str | None:
+        alias_set = {str(alias).strip().lower() for alias in aliases}
+        for col in df.columns:
+            if str(col).strip().lower() in alias_set:
+                return str(col)
+        return None
+
     def _ensure_date_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
         if "date" in df.columns:
             return df
-        df = df.copy()
+        matched_date_col = self._find_matching_column(df, self.DATE_ALIASES)
+        if matched_date_col and matched_date_col != "date":
+            df.rename(columns={matched_date_col: "date"}, inplace=True)
+            return df
         if len(df.columns) == 0:
             df["date"] = pd.Series(dtype="datetime64[ns]")
         else:
             df.rename(columns={df.columns[0]: "date"}, inplace=True)
+        return df
+
+    def _ensure_close_column(self, df: pd.DataFrame, requested_fields: list[str]) -> pd.DataFrame:
+        if not any(str(field).strip().lower() == "close" for field in requested_fields):
+            return df
+        if "close" in df.columns:
+            return df
+        df = df.copy()
+        matched_close_col = self._find_matching_column(df, self.CLOSE_ALIASES)
+        if matched_close_col and matched_close_col != "close":
+            df.rename(columns={matched_close_col: "close"}, inplace=True)
+            return df
+        non_date_columns = [col for col in df.columns if str(col).strip().lower() != "date"]
+        if len(non_date_columns) == 1:
+            df.rename(columns={non_date_columns[0]: "close"}, inplace=True)
         return df
 
     def history(
@@ -178,6 +207,8 @@ class LocalDataClient:
             empty_result = self._empty_result()
             return empty_result.frame if usedf else empty_result
         df = self._ensure_date_column(df)
+        requested_fields = [item.strip() for item in str(fields).split(",") if item.strip()]
+        df = self._ensure_close_column(df, requested_fields)
         begin_ts = pd.to_datetime(begin_date, errors="coerce")
         end_ts = pd.to_datetime(end_date, errors="coerce")
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -185,7 +216,6 @@ class LocalDataClient:
             df = df[df["date"] >= begin_ts]
         if pd.notna(end_ts):
             df = df[df["date"] <= end_ts]
-        requested_fields = [item.strip() for item in str(fields).split(",") if item.strip()]
         for field in requested_fields:
             if field not in df.columns:
                 df[field] = pd.NA
@@ -636,13 +666,21 @@ def run_step1(
 
             else:
                 his_data = pd.read_csv(data_file)
+                if 'date' not in his_data.columns:
+                    raise ValueError(f"{data_file} 缺少 date 列，无法增量更新。")
 
                 # 关键：整列解析，解析失败NaT，然后取最后一个有效日
-                d = pd.to_datetime(his_data['date'], errors='coerce')
-                d = d.dropna()
-                if d.empty:
+                parsed_dates = pd.to_datetime(his_data['date'], errors='coerce')
+                valid_mask = parsed_dates.notna()
+                dropped_count = int((~valid_mask).sum())
+                if dropped_count:
+                    logger.warning(f"过滤无法解析的日期行: file={data_file}, dropped={dropped_count}")
+                his_data = his_data.loc[valid_mask].copy()
+                parsed_dates = parsed_dates.loc[valid_mask]
+                if parsed_dates.empty:
                     raise ValueError(f"{data_file} 的 date 列全部无法解析，请检查 CSV 的 date 列内容。")
-                last_data_date = d.iloc[-1].date()
+                his_data['date'] = parsed_dates.dt.strftime('%Y-%m-%d')
+                last_data_date = parsed_dates.iloc[-1].date()
 
 
                 # 仅当库存数据未更新到固定日期时补充数
@@ -656,6 +694,9 @@ def run_step1(
 
                     if not data_df.empty and data_df.iloc[0]['date'] != 0:
                         new_data = pd.concat([his_data, data_df])
+                        new_data['date'] = pd.to_datetime(new_data['date'], errors='coerce')
+                        new_data = new_data.dropna(subset=['date']).drop_duplicates(subset=['date'], keep='last')
+                        new_data['date'] = new_data['date'].dt.strftime('%Y-%m-%d')
                         logger.info(f'updating data file: [{name}.csv] period:{begin_date_str} to {end_date_str}')
                         new_data.to_csv(data_file, index=False, encoding="utf_8_sig")
                     else:
@@ -696,12 +737,20 @@ def run_step1(
 
         else:
             his_data = pd.read_csv(indicator_csvfile)
+            if "date" not in his_data.columns:
+                raise ValueError(f"{indicator_csvfile} 缺少 date 列，无法增量更新。")
             parsed_dates = pd.to_datetime(his_data["date"], errors="coerce")
-            parsed_dates = parsed_dates.dropna()
+            valid_mask = parsed_dates.notna()
+            dropped_count = int((~valid_mask).sum())
+            if dropped_count:
+                logger.warning(f"过滤无法解析的日期行: file={indicator_csvfile}, dropped={dropped_count}")
+            his_data = his_data.loc[valid_mask].copy()
+            parsed_dates = parsed_dates.loc[valid_mask]
             if parsed_dates.empty:
                 raise ValueError(
                     f"{indicator_csvfile} 的 date 列全部无法解析，请检查 CSV 的 date 列内容。"
                 )
+            his_data["date"] = parsed_dates.dt.strftime("%Y-%m-%d")
             last_data_date = parsed_dates.iloc[-1].date()
 
             # 仅当库存数据未更新到固定日期时补充数
@@ -713,6 +762,9 @@ def run_step1(
 
                 if len(data_df) > 0:
                     new_data = pd.concat([his_data, data_df])
+                    new_data["date"] = pd.to_datetime(new_data["date"], errors="coerce")
+                    new_data = new_data.dropna(subset=["date"])
+                    new_data["date"] = new_data["date"].dt.strftime("%Y-%m-%d")
                     new_data.drop_duplicates(subset=['date'], keep='last', inplace=True)
                     logger.info(f'updating data file [{indicator_name}.csv] period:{begin_date_str} to {end_date_str}')
                     new_data.to_csv(indicator_csvfile, index=False, encoding="utf_8_sig")
@@ -1059,13 +1111,33 @@ def run_step2(
             with file_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
                 reader = csv.DictReader(csv_file)
                 fieldnames = list(reader.fieldnames or [])
-                if not fieldnames or "date" not in fieldnames:
+                if not fieldnames:
                     return pd.Series(dtype="float64", name="close")
-                close_keys = [field for field in fieldnames if str(field).strip().lower() == "close"]
+
+                normalized_to_original = {str(field).strip().lower(): field for field in fieldnames}
+
+                def pick_field(*aliases: str) -> str | None:
+                    for alias in aliases:
+                        matched = normalized_to_original.get(alias.strip().lower())
+                        if matched:
+                            return matched
+                    return None
+
+                date_key = pick_field("date", "日期", "交易日期")
+                if date_key is None:
+                    date_key = fieldnames[0]
+
+                close_keys = [
+                    field
+                    for field in fieldnames
+                    if str(field).strip().lower() in {"close", "收盘价(元)", "收盘价", "收盘"}
+                ]
+                if not close_keys and len(fieldnames) >= 2:
+                    close_keys = [fieldnames[1]]
                 if not close_keys:
                     return pd.Series(dtype="float64", name="close")
                 for raw_row in reader:
-                    trade_date = pd.to_datetime(raw_row.get("date"), errors="coerce")
+                    trade_date = pd.to_datetime(raw_row.get(date_key), errors="coerce")
                     if pd.isna(trade_date):
                         continue
                     close_value = np.nan
