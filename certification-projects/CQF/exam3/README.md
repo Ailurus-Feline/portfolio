@@ -10,7 +10,7 @@ The submission is organized to match the exam structure:
 
 ## Submission Summary
 
-- Main analytical notebook: [CQF_Exam3_MachineLearning.ipynb](CQF_Exam3_MachineLearning.ipynb)
+- Main analytical notebook: [report.ipynb](report.ipynb)
 - Raw cached data: `data/raw/QQQ_5years.csv`
 - Processed feature set: `data/processed/QQQ_features_processed.csv`
 - Saved figures: `figures/*.png`
@@ -88,7 +88,7 @@ Saved figures include:
 exam3/
 ├── README.md
 ├── .gitignore
-├── CQF_Exam3_MachineLearning.ipynb
+├── report.ipynb
 ├── data/
 │   ├── raw/
 │   │   └── QQQ_5years.csv
