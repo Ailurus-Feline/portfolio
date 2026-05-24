@@ -7,6 +7,7 @@ The submission is organized to match the exam structure:
 - **Section A**: Entropy in classification
 - **Section B**: Feature selection with a funneling approach
 - **Section C**: Model building, tuning, and evaluation
+- **Section D**: Optional backtesting of trading signals
 
 ## Submission Summary
 
@@ -48,6 +49,29 @@ The notebook uses a three-stage funneling approach:
 - Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
 - Generates interpretation plots for reporting.
 
+### Section D - Optional: Backtesting Trading Strategy (Bonus)
+
+Implements practical backtesting to evaluate whether the ML predictions translate into profitable trading signals:
+
+**Strategy Design:**
+- Buy signals: Generated when model predicts uptrend probability > 50%
+- Position: Long-only, single-day hold (enter and exit next day)
+- Costs: 0.05% transaction cost + 0.02% slippage per trade
+- Capital: $100,000 initial portfolio
+
+**Performance Metrics:**
+- Cumulative and annualized returns
+- Risk metrics (volatility, max drawdown, Sharpe/Sortino/Calmar ratios)
+- Trade statistics (win rate, profit factor, average trade return)
+- Comparison vs. buy-and-hold benchmark
+
+**Outputs:**
+- Comprehensive performance table
+- Visualizations: portfolio growth, drawdowns, metrics comparison
+- Summary report with key insights and limitations
+
+This optional section demonstrates the practical application of the ML model and provides evidence of edge in the identified patterns.
+
 ## Data and Features
 
 - **Ticker**: QQQ
@@ -81,6 +105,7 @@ Saved figures include:
 - `confusion_matrices.png`
 - `feature_importance.png`
 - `prediction_distributions.png`
+- `backtesting_analysis.png` (optional section)
 
 ## Folder Structure
 
@@ -98,7 +123,8 @@ exam3/
     ├── roc_curves.png
     ├── confusion_matrices.png
     ├── feature_importance.png
-    └── prediction_distributions.png
+    ├── prediction_distributions.png
+    └── backtesting_analysis.png
 ```
 
 ## Reproducibility
