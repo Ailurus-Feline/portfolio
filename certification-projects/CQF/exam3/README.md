@@ -59,18 +59,21 @@ The notebook uses a three-stage funneling approach:
 Implements practical backtesting to evaluate whether the ML predictions translate into profitable trading signals:
 
 **Strategy Design:**
+
 - Buy signals: Generated when model predicts uptrend probability > 50%
 - Position: Long-only, single-day hold (enter and exit next day)
 - Costs: 0.05% transaction cost + 0.02% slippage per trade
 - Capital: $100,000 initial portfolio
 
 **Performance Metrics:**
+
 - Cumulative and annualized returns
 - Risk metrics (volatility, max drawdown, Sharpe/Sortino/Calmar ratios)
 - Trade statistics (win rate, profit factor, average trade return)
 - Comparison vs. buy-and-hold benchmark
 
 **Outputs:**
+
 - Comprehensive performance table
 - Visualizations: portfolio growth, drawdowns, metrics comparison
 - Summary report with key insights and limitations
