@@ -106,19 +106,23 @@ For conservative interpretation, the perfect metrics should be treated as a succ
 The Gradient Boosting model assigns importance scores to each feature based on how often and how effectively they reduce impurity during tree splits. The top features and their financial interpretations are:
 
 **Momentum Features** (highest combined importance):
+
 - **CloseCloseSpread**: Daily return momentum—captures immediate price continuation
 - **Volatility_7d**: Short-term risk proxy—recent market turbulence may precede reversals or continuations
 - **ROC_12**: Rate of change momentum—medium-horizon trend strength
 
 **Volatility Features** (moderate importance):
+
 - **ATR_14**: Average True Range—absolute price movement magnitude independent of direction
 - **BB_width**: Bollinger Band width—market regime volatility proxy
 
 **Mean Reversion Features** (lower but non-zero importance):
+
 - **RSI_14**: Relative Strength Index—overbought/oversold signals
 - **MACD_diff**: MACD divergence—trend following vs. reversal indicator
 
 **Volume Features** (least important):
+
 - **OBV_ratio**: On-Balance Volume ratio—volume accumulation/distribution proxy
 
 The dominance of momentum features suggests that short-horizon persistence in QQQ movements is the primary driver of the classification. Volatility metrics provide secondary context, while mean-reversion and volume signals contribute minimally.
@@ -181,17 +185,6 @@ Despite positive backtest results, several limitations apply:
 ### Conclusion on Backtesting
 
 The backtesting framework demonstrates that the model's signals can be translated into a systematic trading rule. Whether such a rule would be viable in live trading depends on factors beyond the scope of this analysis, including proper position sizing, dynamic risk management, and continuous model retraining.
-
-## Interpretation
-
-The perfect test metrics indicate extremely strong separation between the classes on this dataset. In a financial setting, such a result is unusual and should be interpreted with caution. The most likely explanations are that the engineered features capture a very strong short-horizon signal or that the dataset and target definition make the classification task easier than a realistic live-trading problem.
-
-For a submission-style discussion, it is sensible to state both the strong empirical results and the practical limitations:
-
-- no transaction costs or slippage are included
-- the sample is historical and may not reflect future regimes
-- the features are technical only and exclude macro or news-driven effects
-- the evaluation is a static train/test split rather than a walk-forward backtest
 
 ## Conclusion
 
