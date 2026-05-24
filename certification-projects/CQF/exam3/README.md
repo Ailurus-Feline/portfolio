@@ -44,10 +44,15 @@ The notebook uses a three-stage funneling approach:
 
 ### Section C - Model Building and Evaluation
 
-- Trains a `GradientBoostingClassifier`.
-- Tunes hyperparameters with `GridSearchCV`.
+- Trains a `GradientBoostingClassifier` with 32 hyperparameter combinations
+- Tunes hyperparameters with `GridSearchCV` using 5-fold cross-validation.
+- **Hyperparameter Sensitivity Analysis**: Identifies which parameters have the largest impact on model performance (max_depth and learning_rate are most important).
+- **Cross-Validation Stability**: Reports metrics across 5 folds (accuracy, precision, recall, F1) with standard deviation to assess model consistency.
+- **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk; shows zero train-validation gap.
+- **Feature Importance Interpretation**: Maps model importance scores to financial meanings (momentum, volatility, mean reversion, volume) and identifies primary drivers.
 - Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
-- Generates interpretation plots for reporting.
+- **Statistical Significance Testing**: Applies t-tests and bootstrap confidence intervals to validate the robustness of backtesting results.
+- Generates interpretation plots for reporting (ROC curves, confusion matrices, learning curves, feature importance).
 
 ### Section D - Optional: Backtesting Trading Strategy (Bonus)
 
@@ -101,11 +106,12 @@ The final notebook reports the following test-set metrics:
 
 Saved figures include:
 
-- `roc_curves.png`
-- `confusion_matrices.png`
-- `feature_importance.png`
-- `prediction_distributions.png`
-- `backtesting_analysis.png` (optional section)
+- `roc_curves.png` - Training and test ROC curves comparing model performance
+- `confusion_matrices.png` - Train/test confusion matrices for classification diagnostics
+- `feature_importance.png` - Top features ranked by model importance scores
+- `prediction_distributions.png` - Histogram of predicted probabilities on train/test sets
+- `learning_curves.png` - Training and validation AUC-ROC vs. dataset size for overfitting diagnosis
+- `backtesting_analysis.png` (optional section) - Strategy vs. buy-and-hold performance comparison
 
 ## Folder Structure
 
