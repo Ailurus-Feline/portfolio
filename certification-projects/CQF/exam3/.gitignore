@@ -1,6 +1,18 @@
 # Exam PDF (manual submission only)
 *.pdf
 
+# Data files (auto-generated, not needed in repo)
+data/raw/*.csv
+data/processed/*.csv
+*.csv
+
+# Generated figures
+figures/
+
+# Jupyter notebooks cache
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
 # Python cache
 __pycache__/
 *.py[cod]
