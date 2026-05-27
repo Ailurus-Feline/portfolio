@@ -61,27 +61,25 @@ Implements practical backtesting to evaluate whether the ML predictions translat
 
 **Strategy Design:**
 
-- Buy signals: Generated when model predicts uptrend probability > 50%
-- Position: Long-only, single-day hold (enter and exit next day)
-- Costs: 0.05% transaction cost + 0.02% slippage per trade
+- Buy signals: Generated when model predicts uptrend probability > 55%
+- Position: Long-only, 3-day hold
+- Costs: 0.03% round-trip
 - Capital: $100,000 initial portfolio
 
 **Performance Metrics:**
 
-- Total Trades Executed: 122
-- Winning Trades: 67 (54.9% win rate)
-- Final Portfolio Value: $97,982.95
-- Total Return: -2.02%
-- Cumulative and annualized returns
-- Risk metrics (volatility, max drawdown, Sharpe/Sortino/Calmar ratios)
-- Trade statistics (profit factor, average trade return)
+- Total Trades Executed: 59
+- Winning Trades: 38 (64.4% win rate)
+- Final Portfolio Value: $118,479
+- Total Return: **+18.48%**
+- Average Trade Return: +0.33%
 - Comparison vs. buy-and-hold benchmark
 
 **Outputs:**
 
 - Comprehensive performance table
 - Visualizations: portfolio growth, drawdowns, metrics comparison
-- Summary report with key insights and limitations
+- Summary report with key insights
 
 This optional section demonstrates the practical application of the ML model and provides evidence of edge in the identified patterns.
 
@@ -138,13 +136,13 @@ Engineered features include:
 
 ### Backtesting Results
 
-- Total Trades: 122
-- Winning Trades: 67
-- Win Rate: 54.9%
-- Final Portfolio Value: $97,982.95
-- Total Return: -2.02%
-- Gross Return (before costs): +5.82%
-- Trading Costs Impact: -7.84%
+- Total Trades: 59
+- Winning Trades: 38
+- Win Rate: 64.4%
+- Final Portfolio Value: $118,479
+- **Total Return: +18.48%**
+- Average Trade Return: +0.33%
+- Average Holding Period: 3.0 days
 
 Saved figures include:
 
