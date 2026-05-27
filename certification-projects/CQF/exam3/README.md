@@ -12,8 +12,8 @@ The submission is organized to match the exam structure:
 ## Submission Summary
 
 - Main analytical notebook: [report.ipynb](report.ipynb)
-- Raw cached data: `data/raw/QQQ_5years.csv`
-- Processed feature set: `data/processed/QQQ_features_processed.csv`
+- Raw cached data: `data/raw/QQQ_5y.csv`
+- Processed feature set: `data/processed/QQQ_processed.csv`
 - Saved figures: `figures/*.png`
 
 The notebook is the primary analytical artifact. It contains the full explanation, code, outputs, and final conclusions required for the exam.
@@ -49,7 +49,7 @@ The notebook uses a three-stage funneling approach:
 - **Hyperparameter Grid**: Tests n_estimators {80, 120, 160}, learning_rate {0.05, 0.08, 0.1}, max_depth {3, 4, 5}, min_samples_split {5, 8}, min_samples_leaf {2, 3}.
 - **Cross-Validation Stability**: Reports metrics across 5 folds (accuracy, precision, recall, F1) with standard deviation to assess model consistency.
 - **Overfitting Diagnosis**: Compares train vs. test metrics to diagnose overfitting (Train AUC: 0.9999, Test AUC: 0.9211, gap: 0.0788).
-- **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk; shows zero train-validation gap.
+- **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk.
 - **Feature Importance Interpretation**: Maps model importance scores to financial meanings (momentum, volatility, mean reversion, volume) and identifies primary drivers.
 - Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
 - **Statistical Significance Testing**: Applies t-tests and bootstrap confidence intervals to validate the robustness of backtesting results.
@@ -107,11 +107,13 @@ Engineered features include:
 ### Model Performance (5-Fold Cross-Validation)
 
 **Test Set Metrics:**
+
 - ROC-AUC: 0.9211
 - Accuracy: 0.8407 ± 0.0210
 - F1-score: 0.8384 ± 0.0147
 
 **Train Set Metrics:**
+
 - ROC-AUC: 0.9999
 - Accuracy: 0.9960 ± 0.0014
 - Train-Test Gap: 0.0788 (indicates overfitting)
@@ -151,7 +153,6 @@ Saved figures include:
 - `feature_importance.png` - Top features ranked by model importance scores
 - `prediction_distributions.png` - Histogram of predicted probabilities on train/test sets
 - `learning_curves.png` - Training and validation AUC-ROC vs. dataset size for overfitting diagnosis
-- `backtesting_analysis.png` (optional section) - Strategy vs. buy-and-hold performance comparison
 
 ## Folder Structure
 
@@ -162,15 +163,15 @@ exam3/
 ├── report.ipynb
 ├── data/
 │   ├── raw/
-│   │   └── QQQ_5years.csv
+│   │   └── QQQ_5y.csv
 │   └── processed/
-│       └── QQQ_features_processed.csv
+│       └── QQQ_processed.csv
 └── figures/
     ├── roc_curves.png
     ├── confusion_matrices.png
     ├── feature_importance.png
     ├── prediction_distributions.png
-    └── backtesting_analysis.png
+    └── learning_curves.png
 ```
 
 ## Reproducibility
@@ -193,5 +194,5 @@ Recommended packages:
 - If the notebook is regenerated, rerun all cells in order so that the saved outputs remain consistent.
 
 ## Author
-f
+
 Mao Yikai
