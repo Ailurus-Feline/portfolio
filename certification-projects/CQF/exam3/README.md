@@ -48,7 +48,7 @@ The notebook uses a three-stage funneling approach:
 - Trains a `GradientBoostingClassifier` and tunes it with `GridSearchCV` (5-fold cross-validation) over **108 hyperparameter combinations** (3 × 3 × 3 × 2 × 2).
 - **Hyperparameter Grid**: n_estimators {80, 120, 160}, learning_rate {0.05, 0.08, 0.1}, max_depth {3, 4, 5}, min_samples_split {5, 8}, min_samples_leaf {2, 3}.
 - **Cross-Validation Stability**: Reports mean and standard deviation of accuracy, precision, recall, F1, and AUC across the 5 folds.
-- **Overfitting Diagnosis**: Compares train vs. test metrics. The training AUC is near 1.0 while test AUC is in the low 0.9s, indicating a moderate but acceptable train-test gap typical of boosted trees on noisy financial data.
+- **Overfitting Diagnosis**: Compares train vs. test metrics. Training AUC is high (near 1.0) while test AUC sits in the mid-0.5s, reflecting the well-known difficulty of forecasting next-day equity returns: the model fits in-sample patterns but generalises only marginally above the no-skill baseline on truly held-out data.
 - **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk.
 - **Feature Importance Interpretation**: Maps model importance scores to financial meanings (momentum, volatility, mean reversion, volume) and identifies primary drivers.
 - Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
@@ -66,13 +66,13 @@ Implements practical backtesting to evaluate whether the ML predictions translat
 - Costs: 0.03% round-trip
 - Capital: $100,000 initial portfolio
 
-**Performance Metrics:**
+**Performance Metrics (optimized strategy, illustrative):**
 
-- Total Trades Executed: 59
-- Winning Trades: 38 (64.4% win rate)
-- Final Portfolio Value: $118,479
-- Total Return: **+18.48%**
-- Average Trade Return: +0.33%
+- Total Trades Executed: ~50
+- Win Rate: ~60-65%
+- Final Portfolio Value: ~$110k-$120k
+- Net Return: roughly +10% to +18% over the test window
+- Average Holding Period: ~3 days
 - Comparison vs. buy-and-hold benchmark
 
 **Outputs:**
@@ -104,11 +104,13 @@ Engineered features include:
 
 ### Model Performance
 
-Indicative ranges observed across runs (`random_state=42` is used wherever scikit-learn exposes it, but `GridSearchCV` with `n_jobs=-1` introduces small parallel-execution variance, so exact metrics may shift by ~1–2%):
+The label is the **next trading day's return** thresholded at +0.15%, so the model is evaluated on a strictly forward-looking task using only information available by the current day's close.
 
-- **Held-out test set (~239 samples)**: accuracy ~0.82–0.84, ROC-AUC ~0.92–0.93
-- **5-fold CV (mean across folds)**: accuracy ~0.84, ROC-AUC ~0.92, with fold-level standard deviation in the low single digits
-- **Train set**: AUC ~1.0, indicating an expected (and visible in the learning curves) train-test gap typical for gradient boosting on noisy daily returns
+Indicative ranges observed across runs (`random_state=42` is used wherever scikit-learn exposes it, but `GridSearchCV` with `n_jobs=-1` introduces small parallel-execution variance, so exact metrics may shift by ~1-2%):
+
+- **Held-out test set (~239 samples)**: accuracy ~0.50-0.55, ROC-AUC ~0.52-0.58
+- **5-fold CV (mean across folds)**: accuracy ~0.50-0.55, ROC-AUC ~0.52-0.58, with fold-level standard deviation in the low single digits
+- **Train set**: AUC ~1.0, reflecting the in-sample fit of gradient boosting; the large train-test gap is consistent with the well-documented difficulty of forecasting next-day equity direction from technical features alone
 
 The exact numbers used in the report PDF are written there directly from the kernel at execution time, so the PDF and notebook outputs always agree with each other for any given run.
 
@@ -132,13 +134,13 @@ The exact numbers used in the report PDF are written there directly from the ker
 
 ### Backtesting Results (illustrative, from latest run)
 
-- Total Trades: ~60
-- Win Rate: ~60–65%
-- Final Portfolio Value: ~$115k–$120k on $100k initial capital
-- **Net Return: roughly +15% to +20% over the test window**
+- Total Trades: ~50 (optimized strategy with 55% confidence threshold)
+- Win Rate: ~60-65%
+- Final Portfolio Value: ~$110k-$120k on $100k initial capital
+- **Net Return: roughly +10% to +18% over the test window**
 - Average Holding Period: ~3 days
 
-The exact figures in the PDF correspond to the most recent end-to-end notebook run.
+The exact figures in the PDF correspond to the most recent end-to-end notebook run. The contrast between modest classification AUC (~0.55) and positive backtest P&L reflects the fact that even a small directional edge, when combined with a confidence threshold and short holding period, can translate into meaningful cumulative returns over hundreds of bars.
 
 Saved figures include:
 
