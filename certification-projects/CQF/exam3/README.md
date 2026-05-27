@@ -137,6 +137,7 @@ The label is the **next trading day's return** thresholded at +0.15%, so the mod
 Long-only execution on the test window, starting from $100,000 capital with 0.03% round-trip costs.
 
 | Strategy | Confidence threshold | Trades | Win rate | Final value | Net return |
+
 |---|---|---|---|---|---|
 | Baseline | 0.50 | 114 | 57.9% | $104,070.18 | **+4.07%** |
 | Optimized (3-day hold) | 0.55 | 53 | 64.2% | $114,168.45 | **+14.17%** |
