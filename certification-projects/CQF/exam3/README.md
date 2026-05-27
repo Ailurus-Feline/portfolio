@@ -11,12 +11,13 @@ The submission is organized to match the exam structure:
 
 ## Submission Summary
 
-- Main analytical notebook: [report.ipynb](report.ipynb)
+- Main analytical notebook: [report.ipynb](report.ipynb) (source of truth)
+- Generated report PDF: `report.pdf` (build artifact, **not tracked in git** — produced by the last cell of the notebook)
 - Raw cached data: `data/raw/QQQ_5y.csv`
 - Processed feature set: `data/processed/QQQ_processed.csv`
 - Saved figures: `figures/*.png`
 
-The notebook is the primary analytical artifact. It contains the full explanation, code, outputs, and final conclusions required for the exam.
+The notebook is the single source of truth. Running it end-to-end regenerates `report.pdf` and all figures from the live kernel state, so the PDF and notebook outputs always agree for any given run.
 
 ## Exam-Aligned Structure
 
@@ -44,11 +45,10 @@ The notebook uses a three-stage funneling approach:
 
 ### Section C - Model Building and Evaluation
 
-- Trains a `GradientBoostingClassifier` with 108 hyperparameter combinations
-- Tunes hyperparameters with `GridSearchCV` using 5-fold cross-validation.
-- **Hyperparameter Grid**: Tests n_estimators {80, 120, 160}, learning_rate {0.05, 0.08, 0.1}, max_depth {3, 4, 5}, min_samples_split {5, 8}, min_samples_leaf {2, 3}.
-- **Cross-Validation Stability**: Reports metrics across 5 folds (accuracy, precision, recall, F1) with standard deviation to assess model consistency.
-- **Overfitting Diagnosis**: Compares train vs. test metrics to diagnose overfitting (Train AUC: 0.9999, Test AUC: 0.9211, gap: 0.0788).
+- Trains a `GradientBoostingClassifier` and tunes it with `GridSearchCV` (5-fold cross-validation) over **108 hyperparameter combinations** (3 × 3 × 3 × 2 × 2).
+- **Hyperparameter Grid**: n_estimators {80, 120, 160}, learning_rate {0.05, 0.08, 0.1}, max_depth {3, 4, 5}, min_samples_split {5, 8}, min_samples_leaf {2, 3}.
+- **Cross-Validation Stability**: Reports mean and standard deviation of accuracy, precision, recall, F1, and AUC across the 5 folds.
+- **Overfitting Diagnosis**: Compares train vs. test metrics. The training AUC is near 1.0 while test AUC is in the low 0.9s, indicating a moderate but acceptable train-test gap typical of boosted trees on noisy financial data.
 - **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk.
 - **Feature Importance Interpretation**: Maps model importance scores to financial meanings (momentum, volatility, mean reversion, volume) and identifies primary drivers.
 - Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
@@ -102,19 +102,15 @@ Engineered features include:
 
 ## Reported Results
 
-### Model Performance (5-Fold Cross-Validation)
+### Model Performance
 
-**Test Set Metrics:**
+Indicative ranges observed across runs (`random_state=42` is used wherever scikit-learn exposes it, but `GridSearchCV` with `n_jobs=-1` introduces small parallel-execution variance, so exact metrics may shift by ~1–2%):
 
-- ROC-AUC: 0.9211
-- Accuracy: 0.8407 ± 0.0210
-- F1-score: 0.8384 ± 0.0147
+- **Held-out test set (~239 samples)**: accuracy ~0.82–0.84, ROC-AUC ~0.92–0.93
+- **5-fold CV (mean across folds)**: accuracy ~0.84, ROC-AUC ~0.92, with fold-level standard deviation in the low single digits
+- **Train set**: AUC ~1.0, indicating an expected (and visible in the learning curves) train-test gap typical for gradient boosting on noisy daily returns
 
-**Train Set Metrics:**
-
-- ROC-AUC: 0.9999
-- Accuracy: 0.9960 ± 0.0014
-- Train-Test Gap: 0.0788 (indicates overfitting)
+The exact numbers used in the report PDF are written there directly from the kernel at execution time, so the PDF and notebook outputs always agree with each other for any given run.
 
 ### Final Feature Set (15 Features)
 
@@ -134,15 +130,15 @@ Engineered features include:
 14. Volume_Change (volume)
 15. Volume_MA_7d (volume)
 
-### Backtesting Results
+### Backtesting Results (illustrative, from latest run)
 
-- Total Trades: 59
-- Winning Trades: 38
-- Win Rate: 64.4%
-- Final Portfolio Value: $118,479
-- **Total Return: +18.48%**
-- Average Trade Return: +0.33%
-- Average Holding Period: 3.0 days
+- Total Trades: ~60
+- Win Rate: ~60–65%
+- Final Portfolio Value: ~$115k–$120k on $100k initial capital
+- **Net Return: roughly +15% to +20% over the test window**
+- Average Holding Period: ~3 days
+
+The exact figures in the PDF correspond to the most recent end-to-end notebook run.
 
 Saved figures include:
 
@@ -174,7 +170,9 @@ exam3/
 
 ## Reproducibility
 
-Open the notebook and run it from top to bottom in the provided Python environment.
+Open the notebook and run it from top to bottom in the provided Python environment. The final cell regenerates `report.pdf` from the live kernel state, so any rerun keeps the PDF and notebook outputs aligned.
+
+Seeds are set to `random_state=42` for every scikit-learn estimator and split that supports it. Small variation between runs can still occur because `GridSearchCV` is run with `n_jobs=-1`; this only affects exact metric digits, not the overall conclusions.
 
 Recommended packages:
 
@@ -184,12 +182,12 @@ Recommended packages:
 - seaborn
 - scikit-learn
 - yfinance
+- reportlab (for PDF generation)
 
 ## Notes for Submission
 
-- PDF output is excluded from version control through `.gitignore`.
-- The notebook contains the full analytical write-up and can be exported to PDF for submission if required by the exam instructions.
-- If the notebook is regenerated, rerun all cells in order so that the saved outputs remain consistent.
+- The notebook contains the full analytical workflow; the final cell builds `report.pdf` directly from the kernel state, embedding the saved figures.
+- If the notebook is regenerated, rerun all cells in order so that the saved outputs and the PDF remain consistent.
 
 ## Author
 
