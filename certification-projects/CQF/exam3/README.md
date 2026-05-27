@@ -66,13 +66,14 @@ Implements practical backtesting to evaluate whether the ML predictions translat
 - Costs: 0.03% round-trip
 - Capital: $100,000 initial portfolio
 
-**Performance Metrics (optimized strategy, illustrative):**
+**Performance Metrics (optimized strategy, latest run):**
 
-- Total Trades Executed: ~50
-- Win Rate: ~60-65%
-- Final Portfolio Value: ~$110k-$120k
-- Net Return: roughly +10% to +18% over the test window
-- Average Holding Period: ~3 days
+- Total Trades Executed: 53
+- Winning Trades: 34 (Win Rate: 64.2%)
+- Final Portfolio Value: $114,168.45
+- Net Return: **+14.17%**
+- Average Trade Return: +0.30%
+- Average Holding Period: 3.0 days
 - Comparison vs. buy-and-hold benchmark
 
 **Outputs:**
@@ -102,45 +103,47 @@ Engineered features include:
 
 ## Reported Results
 
+All numbers below are taken verbatim from the most recent end-to-end notebook run committed alongside this README. Reruns may produce slightly different digits because `GridSearchCV` is parallelised with `n_jobs=-1` (`random_state=42` is set everywhere it is exposed). When the notebook is re-executed, the PDF is regenerated from the live kernel state, so the two artefacts always stay numerically consistent within a single run.
+
 ### Model Performance
 
 The label is the **next trading day's return** thresholded at +0.15%, so the model is evaluated on a strictly forward-looking task using only information available by the current day's close.
 
-Indicative ranges observed across runs (`random_state=42` is used wherever scikit-learn exposes it, but `GridSearchCV` with `n_jobs=-1` introduces small parallel-execution variance, so exact metrics may shift by ~1-2%):
-
-- **Held-out test set (~239 samples)**: accuracy ~0.50-0.55, ROC-AUC ~0.52-0.58
-- **5-fold CV (mean across folds)**: accuracy ~0.50-0.55, ROC-AUC ~0.52-0.58, with fold-level standard deviation in the low single digits
-- **Train set**: AUC ~1.0, reflecting the in-sample fit of gradient boosting; the large train-test gap is consistent with the well-documented difficulty of forecasting next-day equity direction from technical features alone
-
-The exact numbers used in the report PDF are written there directly from the kernel at execution time, so the PDF and notebook outputs always agree with each other for any given run.
+- **Held-out test set (239 samples)**: accuracy **0.5230**, ROC-AUC **0.5452**, confusion matrix `[[68, 57], [57, 57]]`
+- **5-fold CV on the wrapper-selected feature set**: AUC mean **0.5338** (std 0.0229, range 0.5003-0.5687); accuracy mean **0.5268** (std 0.0077)
+- **GridSearchCV best CV AUC**: **0.5365** across 108 candidate configurations
+- **Train vs test (5-fold means)**: train AUC **0.9992**, test AUC **0.4607**, gap **0.5385** -- the large gap is consistent with the well-documented difficulty of forecasting next-day equity direction from technical features alone, and motivates the confidence-thresholded backtest in Section D rather than a raw-probability strategy
 
 ### Final Feature Set (15 Features)
 
 1. ATR_14 (volatility)
-2. BB_Position (volatility)
-3. CloseOpenSpread (trend)
-4. Deviation_7d (mean reversion)
-5. MACD_Histogram (momentum)
-6. Momentum_3d (momentum)
-7. Momentum_7d (momentum)
-8. Price_to_Max (mean reversion)
-9. Returns_Lag_2 (lagged returns)
-10. Returns_Lag_3 (lagged returns)
-11. Stochastic_D (momentum)
-12. Stochastic_K (momentum)
-13. TR (volatility)
-14. Volume_Change (volume)
-15. Volume_MA_7d (volume)
+2. MACD_Histogram (momentum)
+3. Momentum_21d (momentum)
+4. Momentum_7d (momentum)
+5. RSI_14 (momentum)
+6. Returns_Lag_1 (lagged returns)
+7. Returns_Lag_2 (lagged returns)
+8. Returns_Lag_3 (lagged returns)
+9. Stochastic_D (momentum)
+10. Stochastic_K (momentum)
+11. TR (volatility)
+12. Volatility_21d (volatility)
+13. Volume_Change (volume)
+14. Volume_MA_7d (volume)
+15. Volume_Ratio (volume)
 
-### Backtesting Results (illustrative, from latest run)
+### Backtesting Results
 
-- Total Trades: ~50 (optimized strategy with 55% confidence threshold)
-- Win Rate: ~60-65%
-- Final Portfolio Value: ~$110k-$120k on $100k initial capital
-- **Net Return: roughly +10% to +18% over the test window**
-- Average Holding Period: ~3 days
+Long-only execution on the test window, starting from $100,000 capital with 0.03% round-trip costs.
 
-The exact figures in the PDF correspond to the most recent end-to-end notebook run. The contrast between modest classification AUC (~0.55) and positive backtest P&L reflects the fact that even a small directional edge, when combined with a confidence threshold and short holding period, can translate into meaningful cumulative returns over hundreds of bars.
+| Strategy | Confidence threshold | Trades | Win rate | Final value | Net return |
+|---|---|---|---|---|---|
+| Baseline | 0.50 | 114 | 57.9% | $104,070.18 | **+4.07%** |
+| Optimized (3-day hold) | 0.55 | 53 | 64.2% | $114,168.45 | **+14.17%** |
+
+Optimized strategy additional stats: average trade return **+0.30%**, average holding period **3.0 days**, total transaction costs **~3.18%** of capital.
+
+The contrast between a modest classification AUC (~0.55) and a positive backtest P&L reflects the fact that even a small directional edge, when combined with a confidence threshold and a short holding period, can translate into meaningful cumulative returns over hundreds of bars.
 
 Saved figures include:
 
