@@ -1,6 +1,3 @@
-# Exam PDF (manual submission only)
-*.pdf
-
 # Data files (auto-generated, not needed in repo)
 data/raw/*.csv
 data/processed/*.csv
