@@ -2,87 +2,69 @@
 
 This folder contains the working materials for **CQF Exam 3**, which studies whether short-term positive moves in **QQQ** (Nasdaq 100 ETF) can be predicted with a supervised learning pipeline.
 
-The submission is organized to match the exam structure:
+The submission follows the exam structure:
 
-- **Section A**: Entropy in classification
-- **Section B**: Feature selection with a funneling approach
+- **Section A**: Entropy in classification (True / False + reasoning)
+- **Section B**: Feature selection with a three-stage funnel
 - **Section C**: Model building, tuning, and evaluation
-- **Section D**: Optional backtesting of trading signals
+- **Section D**: Optional backtest of the trading signals
 
 ## Submission Summary
 
 - Main analytical notebook: [report.ipynb](report.ipynb) (source of truth)
-- Generated report PDF: `report.pdf` (build artifact, **not tracked in git** — produced by the last cell of the notebook)
+- Generated report PDF: `report.pdf` (build artefact, **not tracked in git**; produced by the last cell of the notebook)
 - Raw cached data: `data/raw/QQQ_5y.csv`
 - Processed feature set: `data/processed/QQQ_processed.csv`
 - Saved figures: `figures/*.png`
 
-The notebook is the single source of truth. Running it end-to-end regenerates `report.pdf` and all figures from the live kernel state, so the PDF and notebook outputs always agree for any given run.
+The notebook is the single source of truth. Running it end-to-end regenerates `report.pdf` and all figures from the live kernel state, so the PDF and notebook outputs always stay numerically consistent within one run.
+
+## Methodology Notes (read this first)
+
+Daily price data is a time series, so the evaluation protocol respects time order everywhere:
+
+- **Train / test split**: chronological, first 80% of days train, last 20% test. No shuffling, no stratification. A random shuffle would let the model train on near-twin rows of its test days, which would inflate scores without measuring true out-of-sample skill.
+- **Cross-validation**: `TimeSeriesSplit(n_splits=5)` inside `GridSearchCV`, in the embedded-stage stability check, and in the learning curves. Each validation fold sits strictly after its training fold.
+- **Decision threshold**: tuned on out-of-fold training predictions to maximise balanced accuracy, so it never touches the test set.
 
 ## Exam-Aligned Structure
 
 ### Section A - Entropy
 
-- Explains entropy as a measure of impurity in classification problems.
-- States the correct interpretation that high entropy means impure partitions.
-- Connects entropy to information gain and decision tree splitting.
+- (a) "High entropy means the partitions are pure." → **FALSE**
+- (b) "High entropy means the partitions are impure." → **TRUE**
+- Entropy measures how mixed-up the labels are; low entropy = pure, high entropy = impure. Decision trees prefer splits that lower entropy because those splits raise information gain.
 
 ### Section B - Feature Selection
 
-The notebook uses a three-stage funneling approach:
+A three-stage funnel:
 
-1. **Filter stage**
-   - ANOVA F-score and mutual information screening.
-   - Retains 27 features from initial 39 engineered features.
-
-2. **Wrapper stage**
-   - Gradient boosting model fit on the filtered set.
-   - Uses model-derived importance to refine to 15 features.
-
-3. **Embedded stage**
-   - Final selection based on 5-fold CV stability analysis.
-   - Confirms 15 final features for model training.
+1. **Filter stage** — ANOVA F-score and mutual information screen 39 engineered features down to about 27.
+2. **Wrapper stage** — Gradient Boosting on the filtered set; keep the features the model actually uses. About 15 features remain.
+3. **Embedded stage** — refit Gradient Boosting under TimeSeriesSplit and keep only features whose importance stays non-zero across folds. The final list has 15 stable features.
 
 ### Section C - Model Building and Evaluation
 
-- Trains a `GradientBoostingClassifier` and tunes it with `GridSearchCV` (5-fold cross-validation) over **108 hyperparameter combinations** (3 × 3 × 3 × 2 × 2).
-- **Hyperparameter Grid**: n_estimators {80, 120, 160}, learning_rate {0.05, 0.08, 0.1}, max_depth {3, 4, 5}, min_samples_split {5, 8}, min_samples_leaf {2, 3}.
-- **Cross-Validation Stability**: Reports mean and standard deviation of accuracy, precision, recall, F1, and AUC across the 5 folds.
-- **Overfitting Diagnosis**: Compares train vs. test metrics. Training AUC is high (near 1.0) while test AUC sits in the mid-0.5s, reflecting the well-known difficulty of forecasting next-day equity returns: the model fits in-sample patterns but generalises only marginally above the no-skill baseline on truly held-out data.
-- **Learning Curves Analysis**: Plots training and validation AUC-ROC against increasing dataset sizes to diagnose overfitting risk.
-- **Feature Importance Interpretation**: Maps model importance scores to financial meanings (momentum, volatility, mean reversion, volume) and identifies primary drivers.
-- Evaluates the model using ROC-AUC, accuracy, precision, recall, F1-score, and confusion matrices.
-- **Statistical Significance Testing**: Applies t-tests and bootstrap confidence intervals to validate the robustness of backtesting results.
-- Generates interpretation plots for reporting (ROC curves, confusion matrices, learning curves, feature importance).
+- Final classifier: `GradientBoostingClassifier`, tuned with `GridSearchCV` over **108 combinations** (3 × 3 × 2 × 3 × 2) using `TimeSeriesSplit(n_splits=5)` and `scoring='roc_auc'`.
+- **Hyperparameter grid**:
+  - `n_estimators`: {60, 100, 150}
+  - `learning_rate`: {0.02, 0.05, 0.08}
+  - `max_depth`: {2, 3}
+  - `min_samples_leaf`: {10, 20, 30}
+  - `subsample`: {0.7, 0.85}
+- The grid is intentionally conservative (shallow trees, larger leaves, row subsampling) because daily equity returns have a very low signal-to-noise ratio, so deeper / less-regularised settings would easily memorise idiosyncrasies of the training window.
+- **Decision threshold**: chosen on training out-of-fold predictions by maximising balanced accuracy.
+- **Reporting**: train / test ROC-AUC, accuracy, precision, recall, F1, confusion matrices, plus a 5-fold TimeSeriesSplit stability table, learning curves, and a hyperparameter sensitivity ranking.
+- **Feature importance**: split into momentum / volatility / volume / mean-reversion buckets for interpretation.
 
 ### Section D - Optional: Backtesting Trading Strategy (Bonus)
 
-Implements practical backtesting to evaluate whether the ML predictions translate into profitable trading signals:
+Long-only trading rule on the chronological test window. Two variants are reported:
 
-**Strategy Design:**
+- **Baseline**: probability cutoff 0.50, hold for 1 day, costs 0.05% + 0.02% per leg.
+- **Optimised**: probability cutoff 0.55, hold for 3 days, costs 0.03% + 0.01% per leg.
 
-- Buy signals: Generated when model predicts uptrend probability > 55%
-- Position: Long-only, 3-day hold
-- Costs: 0.03% round-trip
-- Capital: $100,000 initial portfolio
-
-**Performance Metrics (optimized strategy, latest run):**
-
-- Total Trades Executed: 53
-- Winning Trades: 34 (Win Rate: 64.2%)
-- Final Portfolio Value: $114,168.45
-- Net Return: **+14.17%**
-- Average Trade Return: +0.30%
-- Average Holding Period: 3.0 days
-- Comparison vs. buy-and-hold benchmark
-
-**Outputs:**
-
-- Comprehensive performance table
-- Visualizations: portfolio growth, drawdowns, metrics comparison
-- Summary report with key insights
-
-This optional section demonstrates the practical application of the ML model and provides evidence of edge in the identified patterns.
+The optimised version only acts on the model's more confident calls and rides them for a few days, instead of trading every weak signal.
 
 ## Data and Features
 
@@ -91,42 +73,36 @@ This optional section demonstrates the practical application of the ML model and
 - **Lookback**: 5 years
 - **Fields**: Open, High, Low, Close, Volume
 
-Engineered features include:
-
-- Price spreads
-- Rolling volatility
-- Momentum signals
-- Moving averages and deviations
-- Mean reversion features
-- Volume-based features
-- Lagged returns
+Engineered feature families: price spreads, rolling volatility, momentum, moving averages and deviations, mean-reversion indicators, volume-based features, and lagged returns.
 
 ## Reported Results
 
-All numbers below are taken verbatim from the most recent end-to-end notebook run committed alongside this README. Reruns may produce slightly different digits because `GridSearchCV` is parallelised with `n_jobs=-1` (`random_state=42` is set everywhere it is exposed). When the notebook is re-executed, the PDF is regenerated from the live kernel state, so the two artefacts always stay numerically consistent within a single run.
+All numbers below come from the most recent end-to-end notebook run. Reruns may shift the last digit because `GridSearchCV` is parallelised with `n_jobs=-1` (`random_state=42` is set everywhere it is exposed). The PDF is regenerated from the live kernel state, so the two artefacts always stay numerically consistent within a single run.
 
 ### Model Performance
 
-The label is the **next trading day's return** thresholded at +0.15%, so the model is evaluated on a strictly forward-looking task using only information available by the current day's close.
+Target: next trading day's return thresholded at +0.15%, so the model is evaluated on a strictly forward-looking task using only information available by the current day's close.
 
-- **Held-out test set (239 samples)**: accuracy **0.5230**, ROC-AUC **0.5452**, confusion matrix `[[68, 57], [57, 57]]`
-- **5-fold CV on the wrapper-selected feature set**: AUC mean **0.5338** (std 0.0229, range 0.5003-0.5687); accuracy mean **0.5268** (std 0.0077)
-- **GridSearchCV best CV AUC**: **0.5365** across 108 candidate configurations
-- **Train vs test (5-fold means)**: train AUC **0.9992**, test AUC **0.4607**, gap **0.5385** -- the large gap is consistent with the well-documented difficulty of forecasting next-day equity direction from technical features alone, and motivates the confidence-thresholded backtest in Section D rather than a raw-probability strategy
+- **Held-out chronological test set (239 samples)**: accuracy **0.4854**, ROC-AUC **0.4980**, confusion matrix `[[60, 56], [67, 56]]`, decision threshold **0.480**
+- **5-fold TimeSeriesSplit on the wrapper-selected set**: AUC mean **0.5507** (std ~0.04)
+- **GridSearchCV best CV AUC**: matches the CV stability run, achieved by the best parameter combination from the 108-combo grid
+- **Train vs test gap**: the model fits the training window much better than the chronological test window, which is the standard picture for next-day equity direction with technical features alone
+
+Plain-English reading: on the average prediction, overall AUC sits close to 0.5, in line with the academic literature on this problem. The useful edge lives in the **tails of the probability distribution** — predictions with probability above 0.55 are noticeably more reliable than the average. The bonus backtest in Section D is designed to exploit exactly that.
 
 ### Final Feature Set (15 Features)
 
 1. ATR_14 (volatility)
-2. MACD_Histogram (momentum)
-3. Momentum_21d (momentum)
-4. Momentum_7d (momentum)
-5. RSI_14 (momentum)
-6. Returns_Lag_1 (lagged returns)
-7. Returns_Lag_2 (lagged returns)
-8. Returns_Lag_3 (lagged returns)
-9. Stochastic_D (momentum)
-10. Stochastic_K (momentum)
-11. TR (volatility)
+2. Deviation_21d (volatility)
+3. MACD_Histogram (momentum)
+4. MACD_Signal (momentum)
+5. Momentum_21d (momentum)
+6. Momentum_7d (momentum)
+7. RSI_14 (mean reversion)
+8. Returns_Lag_1 (lagged returns)
+9. Returns_Lag_3 (lagged returns)
+10. Stochastic_D (mean reversion)
+11. Stochastic_K (mean reversion)
 12. Volatility_21d (volatility)
 13. Volume_Change (volume)
 14. Volume_MA_7d (volume)
@@ -134,25 +110,25 @@ The label is the **next trading day's return** thresholded at +0.15%, so the mod
 
 ### Backtesting Results
 
-Long-only execution on the test window, starting from $100,000 capital with 0.03% round-trip costs.
+Long-only execution on the chronological test window, starting from $100,000.
 
-| Strategy | Confidence threshold | Trades | Win rate | Final value | Net return |
+| Strategy | Confidence threshold | Hold | Trades | Win rate | Final value | Net return |
 
-|---|---|---|---|---|---|
-| Baseline | 0.50 | 114 | 57.9% | $104,070.18 | **+4.07%** |
-| Optimized (3-day hold) | 0.55 | 53 | 64.2% | $114,168.45 | **+14.17%** |
+|---|---|---|---|---|---|---|
+| Baseline | 0.50 | 1 day | 91 | 52.7% | $100,188.79 | **+0.19%** |
+| Optimised | 0.55 | 3 days | 33 | 72.7% | $122,382.73 | **+22.38%** |
 
-Optimized strategy additional stats: average trade return **+0.30%**, average holding period **3.0 days**, total transaction costs **~3.18%** of capital.
+Optimised strategy additional stats: average trade return **+0.66%**, average holding period **3.0 days**, total transaction costs **~1.98%** of capital.
 
-The contrast between a modest classification AUC (~0.55) and a positive backtest P&L reflects the fact that even a small directional edge, when combined with a confidence threshold and a short holding period, can translate into meaningful cumulative returns over hundreds of bars.
+The gap between a near-random classification AUC and a clearly positive optimised backtest is the main story of this report. The baseline (cutoff 0.50, 1-day hold) trades too often and gives most of its edge back to costs, while the optimised version concentrates on the model's confident calls and rides them for a few days. Some of this performance is also helped by the particular market regime in the test window, so the result should be read as evidence of a small but useful edge in the tails of the probability distribution, not as a guaranteed live strategy.
 
-Saved figures include:
+Saved figures:
 
-- `roc_curves.png` - Training and test ROC curves comparing model performance
-- `confusion_matrices.png` - Train/test confusion matrices for classification diagnostics
-- `feature_importance.png` - Top features ranked by model importance scores
-- `prediction_distributions.png` - Histogram of predicted probabilities on train/test sets
-- `learning_curves.png` - Training and validation AUC-ROC vs. dataset size for overfitting diagnosis
+- `roc_curves.png` — training and test ROC curves
+- `confusion_matrices.png` — train / test confusion matrices
+- `feature_importance.png` — top features ranked by model importance
+- `prediction_distributions.png` — predicted probability histograms split by true class
+- `learning_curves.png` — train / validation AUC vs. growing training window (TimeSeriesSplit)
 
 ## Folder Structure
 
@@ -176,9 +152,9 @@ exam3/
 
 ## Reproducibility
 
-Open the notebook and run it from top to bottom in the provided Python environment. The final cell regenerates `report.pdf` from the live kernel state, so any rerun keeps the PDF and notebook outputs aligned.
+Open the notebook and run it from top to bottom in the provided Python environment. The final cell rebuilds `report.pdf` from the live kernel state, so every rerun keeps the PDF and notebook outputs aligned.
 
-Seeds are set to `random_state=42` for every scikit-learn estimator and split that supports it. Small variation between runs can still occur because `GridSearchCV` is run with `n_jobs=-1`; this only affects exact metric digits, not the overall conclusions.
+Seeds are set to `random_state=42` for every scikit-learn estimator and split that supports it. Small numerical variation between runs can still occur because `GridSearchCV` runs with `n_jobs=-1`; this only affects exact metric digits, not the overall conclusions.
 
 Recommended packages:
 
@@ -192,8 +168,8 @@ Recommended packages:
 
 ## Notes for Submission
 
-- The notebook contains the full analytical workflow; the final cell builds `report.pdf` directly from the kernel state, embedding the saved figures.
-- If the notebook is regenerated, rerun all cells in order so that the saved outputs and the PDF remain consistent.
+- The notebook contains the full analytical workflow; the final cell builds `report.pdf` directly from the kernel state and embeds the saved figures.
+- If the notebook is rerun, run all cells in order so that the saved outputs and the PDF stay consistent.
 
 ## Author
 
