@@ -1,9 +1,3 @@
-"""Crypto CTA Class 1 script migration from notebook.
-
-This file preserves the original notebook workflow and appends student exercises
-without modifying/removing original methods.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -13,14 +7,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-try:
-    import ccxt
-
-    CCXT_AVAILABLE = True
-except ImportError:
-    CCXT_AVAILABLE = False
-    print("ccxt is not installed. Run: pip install ccxt")
+import ccxt
 
 
 pd.set_option("display.max_columns", 20)
@@ -43,8 +30,6 @@ LIMIT_PER_REQUEST = 1000
 
 def make_exchange(exchange_id: str = EXCHANGE_ID):
     """Create a CCXT exchange object with rate limit enabled."""
-    if not CCXT_AVAILABLE:
-        raise ImportError("ccxt is not installed. Run: pip install ccxt")
     exchange_cls = getattr(ccxt, exchange_id)
     return exchange_cls({"enableRateLimit": True})
 
@@ -94,7 +79,7 @@ def generate_demo_ohlcv(
     freq: str = "1h",
     seed: int = 7,
 ) -> pd.DataFrame:
-    """Generate demo OHLCV data for offline classroom use."""
+    """Generate demo OHLCV data for offline use when exchange data is unavailable."""
     rng = np.random.default_rng(seed + sum(ord(char) for char in symbol))
     idx = pd.date_range(start=start, periods=periods, freq=freq, tz="UTC")
     drift = 0.00002
@@ -223,7 +208,7 @@ def performance_summary(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> p
 
 
 def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Exercise append: long-only MA signal where non-bull regime stays flat instead of short."""
+    """Build a long-only MA signal where non-bull regimes stay flat instead of short."""
     out = df.copy()
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
@@ -236,7 +221,7 @@ def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) ->
 
 def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> None:
     """Plot close price and moving averages for visual sanity checks."""
-    fig, ax = plt.subplots(figsize=(12, 5))
+    _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["close"], label="Close")
     ax.plot(bt["datetime"], bt[f"ma_{fast}"], label=f"MA_{fast}")
     ax.plot(bt["datetime"], bt[f"ma_{slow}"], label=f"MA_{slow}")
@@ -250,7 +235,7 @@ def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> No
 
 def plot_equity(bt: pd.DataFrame, title: str) -> None:
     """Plot strategy equity against buy-and-hold benchmark."""
-    fig, ax = plt.subplots(figsize=(12, 5))
+    _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["equity"], label="MA strategy")
     ax.plot(bt["datetime"], bt["buy_hold"], label="Buy and hold")
     ax.set_title(title)
@@ -282,7 +267,7 @@ def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], 
         results[symbol] = {"backtest": bt_df, "summary": performance_summary(bt_df)}
 
     summary_table = pd.DataFrame({symbol: obj["summary"] for symbol, obj in results.items()}).T
-    summary_table.to_csv(RESULTS / "class_1_ma_strategy_summary.csv")
+    summary_table.to_csv(RESULTS / "ma_strategy_summary.csv")
 
     for symbol, obj in results.items():
         safe_name = symbol.replace("/", "_")
@@ -293,11 +278,11 @@ def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], 
     return clean_data, summary_table, results
 
 
-def run_student_exercises(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Append-only student exercise solutions built on top of original methods."""
+def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """Run scenario analyses built on top of the baseline MA strategy methods."""
     outputs: dict[str, pd.DataFrame] = {}
 
-    # Exercise 1: Change fast/slow windows.
+    # Scenario 1: Fast/slow window sweep.
     window_pairs = [(10, 30), (20, 60), (40, 100), (60, 180)]
     rows: list[dict[str, float | int | str]] = []
     base_symbol = "BTC/USDT"
@@ -317,26 +302,26 @@ def run_student_exercises(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.D
                 "max_drawdown": float(perf["Max Drawdown"]),
             }
         )
-    exercise_1 = pd.DataFrame(rows).sort_values("sharpe", ascending=False).reset_index(drop=True)
-    exercise_1.to_csv(RESULTS / "exercise_1_window_sweep.csv", index=False)
-    outputs["exercise_1_window_sweep"] = exercise_1
+    window_sweep = pd.DataFrame(rows).sort_values("sharpe", ascending=False).reset_index(drop=True)
+    window_sweep.to_csv(RESULTS / "window_sweep.csv", index=False)
+    outputs["window_sweep"] = window_sweep
 
-    # Exercise 2: Long-only instead of long-short.
+    # Scenario 2: Long-only versus long-short.
     fast, slow = 40, 100
     ls_signal = add_ma_signal(clean_data[base_symbol], fast=fast, slow=slow)
     lo_signal = add_ma_signal_long_only(clean_data[base_symbol], fast=fast, slow=slow)
     ls_bt = backtest_signal(ls_signal, fee_bps=2.0)
     lo_bt = backtest_signal(lo_signal, fee_bps=2.0)
-    exercise_2 = pd.DataFrame(
+    long_only_vs_long_short = pd.DataFrame(
         {
             "long_short": performance_summary(ls_bt),
             "long_only": performance_summary(lo_bt),
         }
     ).T
-    exercise_2.to_csv(RESULTS / "exercise_2_long_only_vs_long_short.csv")
-    outputs["exercise_2_long_only_vs_long_short"] = exercise_2
+    long_only_vs_long_short.to_csv(RESULTS / "long_only_vs_long_short.csv")
+    outputs["long_only_vs_long_short"] = long_only_vs_long_short
 
-    # Exercise 3: Transaction-cost sensitivity.
+    # Scenario 3: Transaction-cost sensitivity.
     fee_bps_grid = [0.5, 1.0, 2.0, 5.0, 10.0]
     fee_rows: list[dict[str, float]] = []
     for fee_bps in fee_bps_grid:
@@ -351,45 +336,23 @@ def run_student_exercises(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.D
                 "avg_turnover": float(perf["Average Turnover"]),
             }
         )
-    exercise_3 = pd.DataFrame(fee_rows).sort_values("fee_bps").reset_index(drop=True)
-    exercise_3.to_csv(RESULTS / "exercise_3_fee_sensitivity.csv", index=False)
-    outputs["exercise_3_fee_sensitivity"] = exercise_3
+    fee_sensitivity = pd.DataFrame(fee_rows).sort_values("fee_bps").reset_index(drop=True)
+    fee_sensitivity.to_csv(RESULTS / "fee_sensitivity.csv", index=False)
+    outputs["fee_sensitivity"] = fee_sensitivity
 
-    # Exercise 4: Add one more symbol and rerun baseline.
+    # Scenario 4: Add one more symbol and rerun baseline.
     extended_symbols = sorted(set(list(clean_data.keys()) + ["SOL/USDT"]))
     clean_plus, summary_plus, _ = run_baseline_workflow(extended_symbols)
     _ = clean_plus
-    summary_plus.to_csv(RESULTS / "exercise_4_add_symbol_summary.csv")
-    outputs["exercise_4_add_symbol_summary"] = summary_plus
+    summary_plus.to_csv(RESULTS / "extended_symbol_summary.csv")
+    outputs["extended_symbol_summary"] = summary_plus
 
-    # Exercise 5: Create a short README summary for the exercise results.
-    readme_text = """# Class 1 MA Strategy Exercise Notes
-
-## Setup
-- Base market: spot crypto, 1-hour bars.
-- Core symbols: BTC/USDT, ETH/USDT.
-- Added symbol in exercise 4: SOL/USDT.
-
-## What was tested
-1. Different MA windows (fast/slow pairs).
-2. Long-only vs long-short signal design.
-3. Different transaction-cost assumptions.
-4. Multi-symbol rerun with one extra symbol.
-
-## Interpretation guide
-- Verify logic correctness first: data quality, signal lagging, and cost charging.
-- Compare robustness across windows and cost assumptions.
-- Treat in-sample profitability as exploratory, not production-ready evidence.
-"""
-    readme_path = RESULTS / "exercise_5_readme.md"
-    readme_path.write_text(readme_text, encoding="utf-8")
-
-    print("Saved student exercise outputs to:", RESULTS.resolve())
+    print("Saved scenario outputs to:", RESULTS.resolve())
     return outputs
 
 
 def main() -> None:
-    """Execute baseline workflow, then append and run student exercise solutions."""
+    """Execute baseline workflow and then run scenario analyses."""
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
     print("Baseline summary:")
@@ -400,7 +363,7 @@ def main() -> None:
         plot_price_and_mas(btc, fast=40, slow=100, title="BTC/USDT close price and moving averages")
         plot_equity(btc, title="BTC/USDT equity curve")
 
-    _exercise_outputs = run_student_exercises(clean_data)
+    run_strategy_scenarios(clean_data)
 
 
 if __name__ == "__main__":
