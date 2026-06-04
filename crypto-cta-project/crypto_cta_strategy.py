@@ -563,7 +563,6 @@ def main() -> None:
 
     print("[Stage 3/3] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
-    print("[Done] All outputs saved under results directory.")
 
 
 if __name__ == "__main__":
