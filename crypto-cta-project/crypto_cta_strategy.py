@@ -9,8 +9,27 @@ import numpy as np
 import pandas as pd
 import ccxt
 
+"""Crypto CTA moving-average strategy research script.
+
+This file is intentionally written as a readable learning baseline.
+It demonstrates one complete quant-research loop:
+
+1. Acquire OHLCV data from exchange APIs (or generate demo data on failure).
+2. Clean and validate time-series data.
+3. Build MA-based trading signals with anti-look-ahead handling.
+4. Run a simple transaction-cost-aware backtest.
+5. Compare scenarios and export artifacts for review.
+
+The implementation prefers clarity over micro-optimization so that each step
+can be studied and modified independently.
+"""
+
 
 pd.set_option("display.max_columns", 20)
+
+# End-to-end flow:
+# 1) data access -> 2) cleaning -> 3) signal -> 4) backtest -> 5) summary + plots
+# The script keeps each step in a separate pure-ish function for easier learning/testing.
 
 # Project paths
 PROJECT_ROOT = Path.cwd()
@@ -29,7 +48,19 @@ LIMIT_PER_REQUEST = 1000
 
 
 def make_exchange(exchange_id: str = EXCHANGE_ID):
-    """Create a CCXT exchange object with rate limit enabled."""
+    """Create a configured CCXT exchange client.
+
+    Parameters
+    ----------
+    exchange_id:
+        Exchange name supported by ccxt (for example: "binance", "okx", "bybit").
+
+    Returns
+    -------
+    Exchange instance
+        A ccxt exchange client with built-in rate limiting enabled.
+    """
+    # `getattr` allows switching exchanges by string config, e.g., "binance" -> ccxt.binance.
     exchange_cls = getattr(ccxt, exchange_id)
     return exchange_cls({"enableRateLimit": True})
 
@@ -42,7 +73,34 @@ def fetch_ohlcv_loop(
     limit: int = 1000,
     max_batches: int = 50,
 ) -> pd.DataFrame:
-    """Fetch OHLCV bars by repeatedly calling fetch_ohlcv and moving `since` forward."""
+    """Fetch OHLCV candles in batches until data is exhausted or limits are hit.
+
+    Why loop in batches:
+    - Most exchange endpoints cap each response by a fixed limit.
+    - A single request usually cannot retrieve a long history.
+    - We advance the `since` cursor using the last returned timestamp.
+
+    Parameters
+    ----------
+    exchange:
+        ccxt exchange instance.
+    symbol:
+        Instrument symbol in ccxt format, e.g., BTC/USDT.
+    timeframe:
+        Candle interval, e.g., 1m, 1h, 1d.
+    since_iso:
+        ISO timestamp string for the start point.
+    limit:
+        Max rows per request.
+    max_batches:
+        Safety cap for total requests in one call.
+
+    Returns
+    -------
+    DataFrame
+        Columns: timestamp, open, high, low, close, volume.
+    """
+    # CCXT APIs accept/start from millisecond timestamps.
     since_ms = exchange.parse8601(since_iso)
     all_rows: list[list[float]] = []
 
@@ -53,6 +111,7 @@ def fetch_ohlcv_loop(
 
         all_rows.extend(rows)
         last_ts = rows[-1][0]
+        # +1 ms avoids refetching the last candle in the next request.
         next_since = last_ts + 1
 
         print(f"{symbol} batch {batch + 1:02d}: {len(rows)} rows, last = {exchange.iso8601(last_ts)}")
@@ -79,12 +138,25 @@ def generate_demo_ohlcv(
     freq: str = "1h",
     seed: int = 7,
 ) -> pd.DataFrame:
-    """Generate demo OHLCV data for offline use when exchange data is unavailable."""
+    """Generate synthetic OHLCV data for offline development.
+
+    This fallback lets the full research pipeline run even when:
+    - network access is blocked,
+    - the selected exchange endpoint is unstable,
+    - or API credentials/regions are restricted.
+
+    The synthetic process is simple on purpose:
+    - random-walk-like returns with symbol-specific volatility,
+    - deterministic seeding for reproducibility,
+    - plausible high/low spread around open/close.
+    """
+    # Use symbol-dependent seed so each asset is reproducible but still different.
     rng = np.random.default_rng(seed + sum(ord(char) for char in symbol))
     idx = pd.date_range(start=start, periods=periods, freq=freq, tz="UTC")
     drift = 0.00002
     vol = 0.015 if symbol.startswith("BTC") else 0.020
     rets = drift + vol * rng.standard_normal(periods)
+    # Build a positive price path from returns in log space.
     close = 100 * np.exp(np.cumsum(rets))
     open_ = np.r_[close[0], close[:-1]]
     spread = np.abs(0.004 * close * rng.standard_normal(periods))
@@ -104,9 +176,16 @@ def generate_demo_ohlcv(
 
 
 def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
-    """Download OHLCV from exchange; fallback to demo data on any failure."""
+    """Download OHLCV for all symbols; fallback to demo data on failure.
+
+    Design choice:
+    This function intentionally catches broad exceptions so the pipeline remains
+    runnable in educational/research settings. In production, you would usually
+    narrow exception classes and add retries/alerting.
+    """
     data: dict[str, pd.DataFrame] = {}
     try:
+        # One exchange instance is reused for all symbols.
         exchange = make_exchange(EXCHANGE_ID)
         exchange.load_markets()
         for symbol in symbols:
@@ -122,6 +201,7 @@ def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
                 raise RuntimeError(f"No data returned for {symbol}")
             data[symbol] = df
     except Exception as error:
+        # For teaching/research workflows, fallback keeps the pipeline runnable.
         print("Data download failed; using demo data instead.")
         print("Reason:", repr(error))
         for symbol in symbols:
@@ -130,13 +210,24 @@ def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
 
 
 def clean_ohlcv(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> pd.DataFrame:
-    """Apply basic cleaning: timestamp conversion, sorting, deduping, and numeric enforcement."""
+    """Clean raw OHLCV into a consistent analysis-ready table.
+
+    Cleaning steps:
+    1. Convert integer timestamps to timezone-aware UTC datetime.
+    2. Sort chronologically and remove duplicate timestamps.
+    3. Keep canonical OHLCV columns.
+    4. Coerce non-numeric values to NaN and drop invalid rows.
+
+    Returns a clean DataFrame used by signal and backtest functions.
+    """
     _ = timeframe  # Kept for interface compatibility with notebook.
     out = df.copy()
+    # Always normalize to UTC for consistent cross-exchange handling.
     out["datetime"] = pd.to_datetime(out["timestamp"], unit="ms", utc=True)
     out = out.sort_values("datetime").drop_duplicates("datetime").reset_index(drop=True)
     out = out[["datetime", "open", "high", "low", "close", "volume"]]
 
+    # Coerce bad values to NaN, then drop; this is safer than failing mid-pipeline.
     for col in ["open", "high", "low", "close", "volume"]:
         out[col] = pd.to_numeric(out[col], errors="coerce")
     out = out.dropna().reset_index(drop=True)
@@ -144,7 +235,14 @@ def clean_ohlcv(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> pd.DataFrame:
 
 
 def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[str, object]:
-    """Return a quick data quality summary including missing bars and duplicates."""
+    """Compute a compact data-quality summary for quick sanity checks.
+
+    The report helps answer:
+    - Are there duplicate timestamps?
+    - Are expected bars missing in the time grid?
+    - What is the actual start/end coverage?
+    """
+    # Build the expected evenly spaced timeline and compare with actual timestamps.
     expected = pd.date_range(df["datetime"].min(), df["datetime"].max(), freq=timeframe, tz="UTC")
     actual = pd.DatetimeIndex(df["datetime"])
     missing = expected.difference(actual)
@@ -158,40 +256,86 @@ def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[st
 
 
 def add_ma_signal(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Build long-short MA signal and one-bar delayed position to avoid look-ahead bias."""
+    """Build a long-short moving-average signal with anti-look-ahead handling.
+
+    Signal logic:
+    - fast MA > slow MA  -> +1 (long)
+    - fast MA <= slow MA -> -1 (short)
+
+    Execution logic:
+    - position is signal shifted by 1 bar, so decisions at t affect trading at t+1.
+    - this is critical to avoid look-ahead bias in backtests.
+    """
     out = df.copy()
+    # Return is calculated on close-to-close bars.
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
     out[f"ma_{slow}"] = out["close"].rolling(slow).mean()
     out["signal"] = np.where(out[f"ma_{fast}"] > out[f"ma_{slow}"], 1, -1)
+    # Before slow MA is available, there is no valid signal.
     out.loc[out[f"ma_{slow}"].isna(), "signal"] = 0
+    # One-bar shift is essential: trade at t+1 using signal formed at t.
     out["position"] = out["signal"].shift(1).fillna(0)
     return out
 
 
 def backtest_signal(df: pd.DataFrame, fee_bps: float = 2.0) -> pd.DataFrame:
-    """Run a simple bar-by-bar backtest with turnover-based transaction costs."""
+    """Run a simple vectorized backtest with turnover-based transaction costs.
+
+    Return model per bar:
+    strategy_ret = position * ret - cost
+
+    Cost model:
+    - turnover = absolute change in position.
+    - fee is charged in basis points on turnover.
+
+    Notes:
+    - This is intentionally minimal and does not model slippage/latency.
+    - Equity here is cumulative arithmetic return around a 1.0 baseline.
+    """
     out = df.copy()
+    # Convert basis points into decimal fee rate.
     fee_rate = fee_bps / 10_000
+    # Turnover is absolute position change; 0->1 and 1->-1 are both charged.
     out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
     out["cost"] = out["turnover"] * fee_rate
+    # Strategy PnL: exposure * return - transaction costs.
     out["strategy_ret"] = out["position"] * out["ret"] - out["cost"]
     out["strategy_ret"] = out["strategy_ret"].fillna(0)
+    # This notebook-style equity uses cumulative returns around 1.0.
     out["equity"] = 1 + (out["strategy_ret"]).cumsum()
     out["buy_hold"] = 1 + (out["ret"].fillna(0)).cumsum()
     return out
 
 
 def max_drawdown(equity: pd.Series) -> float:
-    """Compute maximum drawdown from an equity curve represented in cumulative-return space."""
+    """Compute maximum drawdown from an equity curve.
+
+    Drawdown is measured as the distance from running peak equity.
+    The minimum drawdown value over time is reported as max drawdown.
+    """
     running_max = equity.cummax()
+    # Drawdown is distance from running peak; min value is max drawdown.
     dd = (equity - running_max) / 1
     return float(dd.min())
 
 
 def performance_summary(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.Series:
-    """Summarize strategy performance with annualized return/volatility and turnover metrics."""
+    """Summarize key performance metrics for a backtest result table.
+
+    Included metrics:
+    - Total Return
+    - Annualized Return
+    - Annualized Volatility
+    - Sharpe (return/vol)
+    - Max Drawdown
+    - Average Turnover
+
+    Annualization assumes equally spaced bars and uses periods_per_year
+    (default configured for 1-hour bars).
+    """
     r = bt["strategy_ret"].dropna()
+    # Annualization assumes equally spaced bars.
     ann_ret = (bt["equity"].iloc[-1]) ** (periods_per_year / max(len(bt), 1)) - 1
     ann_vol = r.std() * np.sqrt(periods_per_year)
     sharpe = ann_ret / ann_vol if ann_vol > 0 else np.nan
@@ -208,7 +352,14 @@ def performance_summary(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> p
 
 
 def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Build a long-only MA signal where non-bull regimes stay flat instead of short."""
+    """Build a long-only MA signal variant.
+
+    Difference from the baseline long-short signal:
+    - Bull regime: +1
+    - Non-bull regime: 0 (flat), not -1
+
+    This isolates whether short exposure is helping or hurting performance.
+    """
     out = df.copy()
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
@@ -220,7 +371,13 @@ def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) ->
 
 
 def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> None:
-    """Plot close price and moving averages for visual sanity checks."""
+    """Plot close price and moving averages for visual sanity checks.
+
+    This chart is useful to verify:
+    - MA crossover timing,
+    - trend regime behavior,
+    - and whether signal windows are too fast/slow for the asset.
+    """
     _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["close"], label="Close")
     ax.plot(bt["datetime"], bt[f"ma_{fast}"], label=f"MA_{fast}")
@@ -234,7 +391,10 @@ def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> No
 
 
 def plot_equity(bt: pd.DataFrame, title: str) -> None:
-    """Plot strategy equity against buy-and-hold benchmark."""
+    """Plot strategy equity versus buy-and-hold benchmark.
+
+    This chart helps compare active signal behavior against passive exposure.
+    """
     _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["equity"], label="MA strategy")
     ax.plot(bt["datetime"], bt["buy_hold"], label="Buy and hold")
@@ -247,9 +407,27 @@ def plot_equity(bt: pd.DataFrame, title: str) -> None:
 
 
 def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[str, dict[str, pd.DataFrame | pd.Series]]]:
-    """Run the notebook baseline pipeline and return cleaned data, summary table, and full results."""
+    """Run the baseline research workflow end-to-end.
+
+    Pipeline stages:
+    1. Download/fallback data.
+    2. Clean + validate + persist data.
+    3. Build signals and run backtests per symbol.
+    4. Persist summary and detailed outputs.
+
+    Returns
+    -------
+    clean_data:
+        Per-symbol cleaned datasets.
+    summary_table:
+        Per-symbol performance summary table.
+    results:
+        Per-symbol dict containing backtest table and summary series.
+    """
+    # Step 1: ingest raw market data (real or demo fallback).
     raw_data = download_or_demo(symbols)
 
+    # Step 2: clean and persist a canonical dataset per symbol.
     clean_data: dict[str, pd.DataFrame] = {}
     for symbol, raw_df in raw_data.items():
         clean_df = clean_ohlcv(raw_df)
@@ -260,6 +438,7 @@ def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], 
 
     fast = 40
     slow = 100
+    # Step 3: generate baseline signal/backtest for each symbol.
     results: dict[str, dict[str, pd.DataFrame | pd.Series]] = {}
     for symbol, clean_df in clean_data.items():
         signal_df = add_ma_signal(clean_df, fast=fast, slow=slow)
@@ -269,6 +448,7 @@ def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], 
     summary_table = pd.DataFrame({symbol: obj["summary"] for symbol, obj in results.items()}).T
     summary_table.to_csv(RESULTS / "ma_strategy_summary.csv")
 
+    # Persist per-symbol backtest details for later inspection.
     for symbol, obj in results.items():
         safe_name = symbol.replace("/", "_")
         bt_df = obj["backtest"]
@@ -279,7 +459,16 @@ def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], 
 
 
 def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Run scenario analyses built on top of the baseline MA strategy methods."""
+    """Run scenario analyses on top of the same baseline framework.
+
+    Scenarios:
+    1. MA window sweep.
+    2. Long-only vs long-short.
+    3. Transaction-cost sensitivity.
+    4. Symbol-universe extension.
+
+    Keeping all scenarios under the same function set ensures comparability.
+    """
     outputs: dict[str, pd.DataFrame] = {}
 
     # Scenario 1: Fast/slow window sweep.
@@ -287,6 +476,7 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
     rows: list[dict[str, float | int | str]] = []
     base_symbol = "BTC/USDT"
     for fast, slow in window_pairs:
+        # Re-run the full signal/backtest stack under each parameter pair.
         signal_df = add_ma_signal(clean_data[base_symbol], fast=fast, slow=slow)
         bt_df = backtest_signal(signal_df, fee_bps=2.0)
         perf = performance_summary(bt_df)
@@ -325,6 +515,7 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
     fee_bps_grid = [0.5, 1.0, 2.0, 5.0, 10.0]
     fee_rows: list[dict[str, float]] = []
     for fee_bps in fee_bps_grid:
+        # Isolate fee impact by reusing the same signal and only changing fee.
         bt_df = backtest_signal(ls_signal, fee_bps=fee_bps)
         perf = performance_summary(bt_df)
         fee_rows.append(
@@ -342,6 +533,7 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
 
     # Scenario 4: Add one more symbol and rerun baseline.
     extended_symbols = sorted(set(list(clean_data.keys()) + ["SOL/USDT"]))
+    # Reusing baseline workflow keeps evaluation rules identical across scenarios.
     clean_plus, summary_plus, _ = run_baseline_workflow(extended_symbols)
     _ = clean_plus
     summary_plus.to_csv(RESULTS / "extended_symbol_summary.csv")
@@ -352,18 +544,26 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
 
 
 def main() -> None:
-    """Execute baseline workflow and then run scenario analyses."""
+    """Execute baseline workflow and then scenario analyses.
+
+    This main function is intentionally linear so new learners can trace
+    the full research path in one pass.
+    """
+    print("[Stage 1/3] Running baseline workflow...")
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
-    print("Baseline summary:")
+    print("[Stage 2/3] Baseline summary:")
     print(summary_table)
 
     btc = results["BTC/USDT"]["backtest"]
     if isinstance(btc, pd.DataFrame):
+        print("[Stage 2/3] Generating baseline plots...")
         plot_price_and_mas(btc, fast=40, slow=100, title="BTC/USDT close price and moving averages")
         plot_equity(btc, title="BTC/USDT equity curve")
 
+    print("[Stage 3/3] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
+    print("[Done] All outputs saved under results directory.")
 
 
 if __name__ == "__main__":
