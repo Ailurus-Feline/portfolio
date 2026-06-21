@@ -36,7 +36,10 @@ The main entry point is [crypto-cta-project/crypto_cta_strategy.py](crypto-cta-p
 5. Monetize via historical quantiles (80/20 rule by default):
    - Thresholds use only historical factor values (`shift(1)` + rolling quantiles).
    - PnL includes turnover-based fee deduction.
-6. Export metrics and sensitivity outputs for notebook/report conclusions.
+6. Export baseline selected-factor metrics and sensitivity outputs.
+7. Batch analyze Top-N factors (default Top-3 and Top-5 subsets from ranking):
+   - Per-factor rolling IC, equity, and sensitivity plots
+   - Cross-factor comparison plots and consolidated tables
 
 ## Design Guarantees
 
@@ -50,7 +53,7 @@ The main entry point is [crypto-cta-project/crypto_cta_strategy.py](crypto-cta-p
 - Workflow A (trend baseline): data acquisition, cleaning, MA signal, backtest, metrics, multi-symbol summary, and result persistence.
 - Workflow A extensions: MA window sweep, long-only vs long-short, fee sensitivity, and symbol extension.
 - Workflow B (factor research): target construction, multi-factor IC test, rolling IC stability, quantile monetization, metrics, and sensitivity test.
-- Workflow B output discipline: intermediate tables, report tables, and figures are all exported.
+- Workflow B Top-N extension: each selected factor has rolling IC/equity/sensitivity outputs and comparison plots.
 
 ## Outputs
 
@@ -68,10 +71,18 @@ Saved under [crypto-cta-project/results/csv](crypto-cta-project/results/csv):
 - `factor_dataset.csv`
 - `factor_rolling_ic.csv`
 - `factor_ic_table.csv`
+- `factor_selection.csv`
 - `factor_backtest_metrics.csv`
 - `factor_sensitivity.csv`
 - `factor_quantile_bt_core.csv`
 - `factor_quantile_bt_full.csv`
+- `factor_top_factors.csv`
+- `factor_top3_factors.csv`
+- `factor_top5_factors.csv`
+- `factor_top_rolling_ic.csv`
+- `factor_top_metrics.csv`
+- `factor_top_sensitivity.csv`
+- `factor_top_equity_curves.csv`
 
 ### Parquet Artifacts
 
@@ -96,6 +107,13 @@ Saved under [crypto-cta-project/results/figures](crypto-cta-project/results/figu
 - `factor_rolling_ic.png`
 - `factor_equity_curve.png`
 - `factor_sensitivity_sharpe.png`
+- `factor_top_ranked_ic.png`
+- `factor_top_rolling_ic_compare.png`
+- `factor_top_equity_compare.png`
+- `factor_top_sensitivity_compare.png`
+- `factor_top_<factor>_rolling_ic.png`
+- `factor_top_<factor>_equity_curve.png`
+- `factor_top_<factor>_sensitivity_sharpe.png`
 
 ## Running
 

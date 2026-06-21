@@ -32,6 +32,8 @@ SINCE = "2020-01-01T00:00:00Z"
 LIMIT_PER_REQUEST = 1000
 MAX_FETCH_BATCHES = 200
 EXTENDED_SYMBOL = "SOL/USDT"
+TOP_FACTOR_COUNTS = [3, 5]
+MAX_TOP_FACTOR_ANALYSIS = max(TOP_FACTOR_COUNTS)
 HOURS_PER_DAY = 24
 HOURS_PER_WEEK = 24 * 7
 
@@ -373,6 +375,12 @@ def rolling_ic(factor: pd.Series, target: pd.Series, window: int = 500, method: 
     return factor.rank().rolling(window).corr(target.rank())
 
 
+def factor_slug(name: str) -> str:
+    slug = "".join(char if char.isalnum() else "_" for char in name.lower())
+    slug = "_".join(part for part in slug.split("_") if part)
+    return slug or "factor"
+
+
 def quantile_monetization(
     data: pd.DataFrame,
     factor: str,
@@ -432,16 +440,136 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
     ic_table = calc_ic_table(alpha_df, factor_cols)
 
     min_obs = max(1000, int(len(alpha_df) * 0.2))
-    ranked = ic_table[(ic_table["n_obs"] >= min_obs)].dropna(subset=["clipped_ic"]).copy()
+    ranked = ic_table[(ic_table["n_obs"] >= min_obs)].copy()
+    ranked["score"] = ranked["clipped_ic"].abs()
+    ranked["score"] = ranked["score"].fillna(ranked["pearson_ic"].abs())
+    ranked = ranked.dropna(subset=["score"]).sort_values("score", ascending=False).reset_index(drop=True)
+
     if ranked.empty:
-        selected_factor = ic_table.iloc[0]["factor"]
-        selected_ic = float(ic_table.iloc[0]["pearson_ic"])
-    else:
-        ranked["abs_clipped_ic"] = ranked["clipped_ic"].abs()
-        top_row = ranked.sort_values("abs_clipped_ic", ascending=False).iloc[0]
-        selected_factor = str(top_row["factor"])
-        selected_ic = float(top_row["pearson_ic"])
-    selected_direction = -1 if selected_ic < 0 else 1
+        ranked = ic_table.copy()
+        ranked["score"] = ranked["clipped_ic"].abs()
+        ranked["score"] = ranked["score"].fillna(ranked["pearson_ic"].abs())
+        ranked = ranked.dropna(subset=["score"]).sort_values("score", ascending=False).reset_index(drop=True)
+
+    if ranked.empty:
+        raise RuntimeError("No valid factors available for ranking after IC calculation.")
+
+    top_count = min(MAX_TOP_FACTOR_ANALYSIS, len(ranked))
+    top_factors = ranked.head(top_count).copy()
+    top_factors.insert(0, "rank", range(1, len(top_factors) + 1))
+    top_factors["direction"] = np.where(top_factors["pearson_ic"] < 0, -1, 1)
+
+    selected_factor = str(top_factors.iloc[0]["factor"])
+    selected_ic = float(top_factors.iloc[0]["pearson_ic"])
+    selected_direction = int(top_factors.iloc[0]["direction"])
+
+    top_rolling_rows: list[pd.DataFrame] = []
+    top_metrics_rows: list[dict[str, float | int | str]] = []
+    top_sensitivity_rows: list[dict[str, float | int | str]] = []
+    top_equity_curves = pd.DataFrame({"datetime": alpha_df["datetime"]})
+
+    for row in top_factors.itertuples(index=False):
+        factor_name = str(row.factor)
+        direction = int(row.direction)
+
+        valid_n_i = int(alpha_df[[factor_name, "future_ret_1h"]].dropna().shape[0])
+        rolling_window_i = min(2400, max(200, valid_n_i // 5))
+        rolling_i = rolling_ic(alpha_df[factor_name], alpha_df["future_ret_1h"], window=rolling_window_i)
+        top_rolling_rows.append(
+            pd.DataFrame(
+                {
+                    "datetime": alpha_df["datetime"],
+                    "factor": factor_name,
+                    "rolling_ic": rolling_i,
+                    "rolling_window": rolling_window_i,
+                }
+            )
+        )
+
+        bt_i = quantile_monetization(
+            alpha_df,
+            factor_name,
+            q_high=0.80,
+            q_low=0.20,
+            window=24 * 300,
+            fee_bps=2.0,
+            direction=direction,
+        )
+        top_equity_curves[factor_name] = bt_i["equity"]
+
+        metrics_i = backtest_metrics(bt_i).to_dict()
+        top_metrics_rows.append(
+            {
+                "factor": factor_name,
+                "direction": direction,
+                "n_obs": valid_n_i,
+                "rolling_window": rolling_window_i,
+                "pearson_ic": float(row.pearson_ic),
+                "clipped_ic": float(row.clipped_ic) if pd.notna(row.clipped_ic) else np.nan,
+                "spearman_ic": float(row.spearman_ic) if pd.notna(row.spearman_ic) else np.nan,
+                **{k: float(v) if pd.notna(v) else np.nan for k, v in metrics_i.items()},
+            }
+        )
+
+        factor_sensitivity_rows: list[pd.Series] = []
+        for q in [0.60, 0.70, 0.75, 0.80, 0.85]:
+            tmp_bt = quantile_monetization(
+                alpha_df,
+                factor_name,
+                q_high=q,
+                q_low=1 - q,
+                window=24 * 60,
+                fee_bps=2.0,
+                direction=direction,
+            )
+            tmp_metrics = backtest_metrics(tmp_bt)
+            tmp_metrics["q_high"] = q
+            tmp_metrics["q_low"] = 1 - q
+            factor_sensitivity_rows.append(tmp_metrics)
+            top_sensitivity_rows.append(
+                {
+                    "factor": factor_name,
+                    "q_high": q,
+                    "q_low": 1 - q,
+                    **{k: float(v) if pd.notna(v) else np.nan for k, v in tmp_metrics.to_dict().items()},
+                }
+            )
+
+        sensitivity_i = pd.DataFrame(factor_sensitivity_rows)
+        slug = factor_slug(factor_name)
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(alpha_df["datetime"], rolling_i, label="Rolling IC")
+        ax.axhline(0.0, linestyle="--", linewidth=1)
+        ax.set_title(f"Rolling IC: {factor_name}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("IC")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(FACTOR_FIGURES_OUT / f"factor_top_{slug}_rolling_ic.png", dpi=150)
+        plt.show()
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(bt_i["datetime"], bt_i["equity"], label="Equity")
+        ax.set_title(f"Quantile Monetization Equity: {factor_name}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Equity")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(FACTOR_FIGURES_OUT / f"factor_top_{slug}_equity_curve.png", dpi=150)
+        plt.show()
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(sensitivity_i["q_high"], sensitivity_i["sharpe"], marker="o")
+        ax.set_title(f"Sensitivity (Sharpe): {factor_name}")
+        ax.set_xlabel("Upper Quantile")
+        ax.set_ylabel("Sharpe")
+        fig.tight_layout()
+        fig.savefig(FACTOR_FIGURES_OUT / f"factor_top_{slug}_sensitivity_sharpe.png", dpi=150)
+        plt.show()
+        plt.close(fig)
 
     valid_n = int(alpha_df[[selected_factor, "future_ret_1h"]].dropna().shape[0])
     rolling_window = min(2400, max(200, valid_n // 5))
@@ -481,6 +609,10 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
         sensitivity_rows.append(tmp_metrics)
     sensitivity = pd.DataFrame(sensitivity_rows)
 
+    top_rolling_ic = pd.concat(top_rolling_rows, ignore_index=True)
+    top_metrics = pd.DataFrame(top_metrics_rows)
+    top_sensitivity = pd.DataFrame(top_sensitivity_rows)
+
     alpha_df.to_csv(FACTOR_DATA_OUT / "factor_dataset.csv", index=False)
     ic_table.to_csv(FACTOR_DATA_OUT / "factor_ic_table.csv", index=False)
     alpha_df[["datetime", selected_factor, "future_ret_1h", "rolling_ic"]].to_csv(
@@ -498,11 +630,23 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
             }
         ]
     ).to_csv(FACTOR_DATA_OUT / "factor_selection.csv", index=False)
+    top_factors[
+        ["rank", "factor", "pearson_ic", "clipped_ic", "spearman_ic", "n_obs", "direction", "score"]
+    ].to_csv(FACTOR_DATA_OUT / "factor_top_factors.csv", index=False)
+    top_rolling_ic.to_csv(FACTOR_DATA_OUT / "factor_top_rolling_ic.csv", index=False)
+
+    for top_n in TOP_FACTOR_COUNTS:
+        top_factors.head(min(top_n, len(top_factors)))[
+            ["rank", "factor", "pearson_ic", "clipped_ic", "spearman_ic", "n_obs", "direction", "score"]
+        ].to_csv(FACTOR_DATA_OUT / f"factor_top{top_n}_factors.csv", index=False)
 
     metrics.to_frame(name="value").to_csv(FACTOR_RESULTS_OUT / "factor_backtest_metrics.csv")
     sensitivity.to_csv(FACTOR_RESULTS_OUT / "factor_sensitivity.csv", index=False)
     bt.to_csv(FACTOR_RESULTS_OUT / "factor_quantile_bt_full.csv", index=False)
     bt[["datetime", "signal", "pnl", "equity"]].to_csv(FACTOR_RESULTS_OUT / "factor_quantile_bt_core.csv", index=False)
+    top_metrics.to_csv(FACTOR_RESULTS_OUT / "factor_top_metrics.csv", index=False)
+    top_sensitivity.to_csv(FACTOR_RESULTS_OUT / "factor_top_sensitivity.csv", index=False)
+    top_equity_curves.to_csv(FACTOR_RESULTS_OUT / "factor_top_equity_curves.csv", index=False)
 
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.bar(ic_table["factor"], ic_table["pearson_ic"], alpha=0.8, label="Pearson IC")
@@ -550,6 +694,55 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
     plt.show()
     plt.close(fig)
 
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(top_factors["factor"], top_factors["score"], alpha=0.85)
+    ax.set_title(f"Top {len(top_factors)} Factors by |Clipped IC| (fallback: |Pearson IC|)")
+    ax.set_ylabel("Ranking score")
+    ax.tick_params(axis="x", rotation=30)
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_top_ranked_ic.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for factor_name in top_factors["factor"]:
+        factor_curve = top_rolling_ic[top_rolling_ic["factor"] == factor_name]
+        ax.plot(factor_curve["datetime"], factor_curve["rolling_ic"], label=factor_name)
+    ax.axhline(0.0, linestyle="--", linewidth=1)
+    ax.set_title(f"Rolling IC Comparison: Top {len(top_factors)} Factors")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("IC")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_top_rolling_ic_compare.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for factor_name in top_factors["factor"]:
+        ax.plot(top_equity_curves["datetime"], top_equity_curves[factor_name], label=factor_name)
+    ax.set_title(f"Top {len(top_factors)} Factor Equity Comparison")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_top_equity_compare.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for factor_name in top_factors["factor"]:
+        subset = top_sensitivity[top_sensitivity["factor"] == factor_name]
+        ax.plot(subset["q_high"], subset["sharpe"], marker="o", label=factor_name)
+    ax.set_title(f"Sensitivity (Sharpe) Comparison: Top {len(top_factors)} Factors")
+    ax.set_xlabel("Upper Quantile")
+    ax.set_ylabel("Sharpe")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_top_sensitivity_compare.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
     print("Factor data saved to:", FACTOR_DATA_OUT.resolve())
     print("Factor reports saved to:", FACTOR_RESULTS_OUT.resolve())
     print("Factor figures saved to:", FACTOR_FIGURES_OUT.resolve())
@@ -557,6 +750,7 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
     print("Selected n_obs:", valid_n, "rolling_window:", rolling_window)
     print("Rolling IC mean:", float(alpha_df["rolling_ic"].mean()))
     print("Rolling IC std :", float(alpha_df["rolling_ic"].std()))
+    print("Top factors for batch analysis:", top_factors["factor"].tolist())
 
     return {
         "alpha_data": alpha_df,
@@ -564,6 +758,10 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
         "metrics": metrics,
         "sensitivity": sensitivity,
         "bt": bt,
+        "top_factors": top_factors,
+        "top_metrics": top_metrics,
+        "top_sensitivity": top_sensitivity,
+        "top_rolling_ic": top_rolling_ic,
     }
 
 
