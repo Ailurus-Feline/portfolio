@@ -36,14 +36,15 @@ PROJECT_ROOT = Path.cwd()
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_CLEAN = PROJECT_ROOT / "data" / "clean"
 RESULTS = PROJECT_ROOT / "results"
-for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS]:
+OUTPUTS_CLASS2 = PROJECT_ROOT / "outputs_class2"
+for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS, OUTPUTS_CLASS2]:
     path_obj.mkdir(parents=True, exist_ok=True)
 
 # Baseline configuration from notebook
 EXCHANGE_ID = "binance"  # If Binance is not accessible, try "okx" or "bybit".
 SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 TIMEFRAME = "1h"
-SINCE = "2024-01-01T00:00:00Z"
+SINCE = "2020-01-01T00:00:00Z"
 LIMIT_PER_REQUEST = 1000
 
 
@@ -165,7 +166,8 @@ def generate_demo_ohlcv(
     volume = np.abs(rng.normal(loc=1000, scale=300, size=periods))
     return pd.DataFrame(
         {
-            "timestamp": (idx.view("int64") // 1_000_000).astype("int64"),
+            # Use ISO strings to avoid unit ambiguity across pandas versions.
+            "timestamp": idx.astype(str),
             "open": open_,
             "high": high,
             "low": low,
@@ -173,6 +175,23 @@ def generate_demo_ohlcv(
             "volume": volume,
         }
     )
+
+
+def parse_timestamp_auto(ts: pd.Series) -> pd.Series:
+    """Parse timestamps that may be in s/ms/us/ns epoch or ISO string format."""
+    ts_num = pd.to_numeric(ts, errors="coerce")
+    if ts_num.notna().mean() > 0.8 and ts_num.notna().any():
+        abs_med = float(ts_num.abs().median())
+        if abs_med > 1e17:
+            unit = "ns"
+        elif abs_med > 1e14:
+            unit = "us"
+        elif abs_med > 1e11:
+            unit = "ms"
+        else:
+            unit = "s"
+        return pd.to_datetime(ts_num, unit=unit, utc=True, errors="coerce")
+    return pd.to_datetime(ts, utc=True, errors="coerce")
 
 
 def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
@@ -223,15 +242,202 @@ def clean_ohlcv(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> pd.DataFrame:
     _ = timeframe  # Kept for interface compatibility with notebook.
     out = df.copy()
     # Always normalize to UTC for consistent cross-exchange handling.
-    out["datetime"] = pd.to_datetime(out["timestamp"], unit="ms", utc=True)
+    out["datetime"] = parse_timestamp_auto(out["timestamp"])
+    out = out.dropna(subset=["datetime"])
     out = out.sort_values("datetime").drop_duplicates("datetime").reset_index(drop=True)
     out = out[["datetime", "open", "high", "low", "close", "volume"]]
 
-    # Coerce bad values to NaN, then drop; this is safer than failing mid-pipeline.
+    # Coerce bad values to NaN, then drop; this is safer than  failing mid-pipeline.
     for col in ["open", "high", "low", "close", "volume"]:
         out[col] = pd.to_numeric(out[col], errors="coerce")
     out = out.dropna().reset_index(drop=True)
     return out
+
+
+def zscore(series: pd.Series, window: int) -> pd.Series:
+    mean = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    return (series - mean) / std
+
+
+def momentum(close: pd.Series, lookback: int) -> pd.Series:
+    return close / close.shift(lookback) - 1
+
+
+def volume_price_trend(close: pd.Series, volume: pd.Series, window: int) -> pd.Series:
+    ret = close.pct_change()
+    vol_z = zscore(volume, window)
+    return ret.rolling(window).sum() * vol_z
+
+
+def range_position(close: pd.Series, high: pd.Series, low: pd.Series, window: int) -> pd.Series:
+    rolling_high = high.rolling(window).max()
+    rolling_low = low.rolling(window).min()
+    return (close - rolling_low) / (rolling_high - rolling_low) - 0.5
+
+
+def calculate_rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    ret = close.pct_change()
+    gain = ret.clip(lower=0)
+    loss = (-ret).clip(lower=0)
+    avg_gain = gain.rolling(window).mean()
+    avg_loss = loss.rolling(window).mean()
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+
+def build_alpha_dataset(df: pd.DataFrame) -> pd.DataFrame:
+    """Build class2 alpha factors and future-return target on cleaned OHLCV."""
+    out = df.copy()
+    out["ret_1h"] = out["close"].pct_change()
+    out["future_ret_1h"] = out["close"].shift(-1) / out["close"] - 1
+
+    out["factor_mom_4h"] = momentum(out["close"], 4)
+    out["factor_mom_24h"] = momentum(out["close"], 24)
+    out["factor_mom_72h"] = momentum(out["close"], 72)
+    out["factor_vol_price"] = volume_price_trend(out["close"], out["volume"], 24)
+    out["factor_range_pos"] = range_position(out["close"], out["high"], out["low"], 48)
+    out["factor_rsi_14"] = calculate_rsi(out["close"], window=14)
+    return out
+
+
+def calc_ic_table(data: pd.DataFrame, factors: list[str], target: str = "future_ret_1h") -> pd.DataFrame:
+    rows: list[dict[str, float | int | str]] = []
+    for factor in factors:
+        tmp = data[[factor, target]].dropna()
+        pearson = tmp[factor].corr(tmp[target], method="pearson")
+        clip_pearson = (
+            tmp[factor]
+            .clip(tmp[factor].quantile(0.05), tmp[factor].quantile(0.95))
+            .corr(tmp[target], method="pearson")
+        )
+        spearman = tmp[factor].corr(tmp[target], method="spearman")
+        rows.append(
+            {
+                "factor": factor,
+                "pearson_ic": float(pearson) if pd.notna(pearson) else np.nan,
+                "clipped_ic": float(clip_pearson) if pd.notna(clip_pearson) else np.nan,
+                "spearman_ic": float(spearman) if pd.notna(spearman) else np.nan,
+                "n_obs": len(tmp),
+            }
+        )
+    return pd.DataFrame(rows).sort_values("pearson_ic", key=lambda s: s.abs(), ascending=False)
+
+
+def rolling_ic(factor: pd.Series, target: pd.Series, window: int = 500, method: str = "pearson") -> pd.Series:
+    if method == "pearson":
+        return factor.rolling(window).corr(target)
+    return factor.rank().rolling(window).corr(target.rank())
+
+
+def quantile_monetization(
+    data: pd.DataFrame,
+    factor: str,
+    target: str = "future_ret_1h",
+    q_high: float = 0.80,
+    q_low: float = 0.20,
+    window: int = 24 * 60,
+    fee_bps: float = 2.0,
+    direction: int = 1,
+) -> pd.DataFrame:
+    out = data[["datetime", factor, target]].copy()
+    out[factor] = out[factor] * direction
+
+    hist_factor = out[factor].shift(1)
+    out["q_high"] = hist_factor.rolling(window, min_periods=window // 6).quantile(q_high)
+    out["q_low"] = hist_factor.rolling(window, min_periods=window // 6).quantile(q_low)
+
+    out["signal"] = 0
+    out.loc[out[factor] > out["q_high"], "signal"] = 1
+    out.loc[out[factor] < out["q_low"], "signal"] = -1
+
+    out["position"] = out["signal"]
+    out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
+    out["fee"] = out["turnover"] * fee_bps / 10_000
+    out["pnl"] = out["position"] * out[target] - out["fee"]
+    out["equity"] = (1 + out["pnl"].fillna(0)).cumprod()
+    return out
+
+
+def backtest_metrics(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.Series:
+    pnl = bt["pnl"].dropna()
+    equity = bt["equity"].dropna()
+    ann_return = equity.iloc[-1] ** (periods_per_year / len(equity)) - 1 if len(equity) > 0 else np.nan
+    sharpe = pnl.mean() / pnl.std() * np.sqrt(periods_per_year) if pnl.std(ddof=1) != 0 else np.nan
+    mdd = max_drawdown(equity)
+    avg_turnover = bt["turnover"].mean()
+    exposure = bt["position"].abs().mean()
+    win_rate = (pnl > 0).mean()
+    return pd.Series(
+        {
+            "annual_return": ann_return,
+            "sharpe": sharpe,
+            "max_drawdown": mdd,
+            "avg_hourly_turnover": avg_turnover,
+            "avg_exposure": exposure,
+            "win_rate": win_rate,
+        }
+    )
+
+
+def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame | pd.Series]:
+    """Reproduce class2 notebook requirements from this script only.
+
+    Outputs are exported to outputs_class2/ for direct report usage.
+    """
+    btc_df = clean_data["BTC/USDT"].copy()
+    alpha_df = build_alpha_dataset(btc_df)
+    factor_cols = [col for col in alpha_df.columns if col.startswith("factor_")]
+
+    ic_table = calc_ic_table(alpha_df, factor_cols)
+
+    selected_factor = "factor_mom_24h"
+    alpha_df["rolling_ic"] = rolling_ic(alpha_df[selected_factor], alpha_df["future_ret_1h"], window=2400)
+
+    bt = quantile_monetization(
+        alpha_df,
+        selected_factor,
+        q_high=0.80,
+        q_low=0.20,
+        window=24 * 300,
+        fee_bps=2.0,
+        direction=-1,
+    )
+    metrics = backtest_metrics(bt)
+
+    sensitivity_rows: list[pd.Series] = []
+    for q in [0.60, 0.70, 0.75, 0.80, 0.85]:
+        tmp_bt = quantile_monetization(
+            alpha_df,
+            selected_factor,
+            q_high=q,
+            q_low=1 - q,
+            window=24 * 60,
+            fee_bps=2.0,
+            direction=-1,
+        )
+        tmp_metrics = backtest_metrics(tmp_bt)
+        tmp_metrics["q_high"] = q
+        tmp_metrics["q_low"] = 1 - q
+        sensitivity_rows.append(tmp_metrics)
+    sensitivity = pd.DataFrame(sensitivity_rows)
+
+    ic_table.to_csv(OUTPUTS_CLASS2 / "ic_table.csv", index=False)
+    metrics.to_frame(name="value").to_csv(OUTPUTS_CLASS2 / "backtest_metrics.csv")
+    sensitivity.to_csv(OUTPUTS_CLASS2 / "sensitivity.csv", index=False)
+    bt[["datetime", "signal", "pnl", "equity"]].to_csv(OUTPUTS_CLASS2 / "quantile_bt_core.csv", index=False)
+
+    print("Class2 outputs saved to:", OUTPUTS_CLASS2.resolve())
+    print("Rolling IC mean:", float(alpha_df["rolling_ic"].mean()))
+    print("Rolling IC std :", float(alpha_df["rolling_ic"].std()))
+
+    return {
+        "alpha_data": alpha_df,
+        "ic_table": ic_table,
+        "metrics": metrics,
+        "sensitivity": sensitivity,
+        "bt": bt,
+    }
 
 
 def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[str, object]:
@@ -563,6 +769,9 @@ def main() -> None:
 
     print("[Stage 3/3] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
+
+    print("[Stage 4/4] Running class2 alpha workflow...")
+    run_class2_alpha_workflow(clean_data)
 
 
 if __name__ == "__main__":
