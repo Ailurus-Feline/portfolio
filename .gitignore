@@ -23,4 +23,5 @@ crypto-cta-project/data/raw/
 crypto-cta-project/data/clean/
 crypto-cta-project/__pycache__/
 crypto-cta-project/**/*.pyc
+crypto-cta-project/1/
 crypto-cta-project/2/
