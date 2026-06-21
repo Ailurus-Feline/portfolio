@@ -9,16 +9,23 @@ import numpy as np
 import pandas as pd
 import ccxt
 
-"""Crypto CTA moving-average strategy research script.
+"""Crypto CTA research script with two integrated workflows.
 
-This file is intentionally written as a readable learning baseline.
-It demonstrates one complete quant-research loop:
+The script keeps a readable structure and combines:
 
-1. Acquire OHLCV data from exchange APIs (or generate demo data on failure).
+Trend workflow:
+1. Acquire OHLCV data from exchange APIs (or demo fallback).
 2. Clean and validate time-series data.
-3. Build MA-based trading signals with anti-look-ahead handling.
-4. Run a simple transaction-cost-aware backtest.
-5. Compare scenarios and export artifacts for review.
+3. Build MA-based signals with anti-look-ahead handling.
+4. Backtest with turnover-based transaction costs.
+5. Run robustness scenarios and export reports.
+
+Factor workflow:
+1. Build future-return label and multiple factors.
+2. Compute IC table (Pearson / clipped Pearson / Spearman).
+3. Evaluate rolling IC stability.
+4. Monetize factor via historical quantile thresholds (no look-ahead).
+5. Export equity/metrics/sensitivity artifacts.
 
 The implementation prefers clarity over micro-optimization so that each step
 can be studied and modified independently.
@@ -36,8 +43,9 @@ PROJECT_ROOT = Path.cwd()
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_CLEAN = PROJECT_ROOT / "data" / "clean"
 RESULTS = PROJECT_ROOT / "results"
-OUTPUTS_CLASS2 = PROJECT_ROOT / "outputs_class2"
-for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS, OUTPUTS_CLASS2]:
+CLASS2_DATA_OUT = DATA_CLEAN
+CLASS2_RESULTS_OUT = RESULTS
+for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS]:
     path_obj.mkdir(parents=True, exist_ok=True)
 
 # Baseline configuration from notebook
@@ -383,7 +391,10 @@ def backtest_metrics(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.S
 def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame | pd.Series]:
     """Reproduce class2 notebook requirements from this script only.
 
-    Outputs are exported to outputs_class2/ for direct report usage.
+    Export policy:
+    - Store tabular factor diagnostics under data/clean for data-like artifacts.
+    - Store strategy/report outputs under results for direct report usage.
+    - Keep class2 filename prefixes so artifacts are easy to find.
     """
     btc_df = clean_data["BTC/USDT"].copy()
     alpha_df = build_alpha_dataset(btc_df)
@@ -422,12 +433,13 @@ def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, 
         sensitivity_rows.append(tmp_metrics)
     sensitivity = pd.DataFrame(sensitivity_rows)
 
-    ic_table.to_csv(OUTPUTS_CLASS2 / "ic_table.csv", index=False)
-    metrics.to_frame(name="value").to_csv(OUTPUTS_CLASS2 / "backtest_metrics.csv")
-    sensitivity.to_csv(OUTPUTS_CLASS2 / "sensitivity.csv", index=False)
-    bt[["datetime", "signal", "pnl", "equity"]].to_csv(OUTPUTS_CLASS2 / "quantile_bt_core.csv", index=False)
+    ic_table.to_csv(CLASS2_DATA_OUT / "class2_ic_table.csv", index=False)
+    metrics.to_frame(name="value").to_csv(CLASS2_RESULTS_OUT / "class2_backtest_metrics.csv")
+    sensitivity.to_csv(CLASS2_RESULTS_OUT / "class2_sensitivity.csv", index=False)
+    bt[["datetime", "signal", "pnl", "equity"]].to_csv(CLASS2_RESULTS_OUT / "class2_quantile_bt_core.csv", index=False)
 
-    print("Class2 outputs saved to:", OUTPUTS_CLASS2.resolve())
+    print("Class2 data saved to:", CLASS2_DATA_OUT.resolve())
+    print("Class2 reports saved to:", CLASS2_RESULTS_OUT.resolve())
     print("Rolling IC mean:", float(alpha_df["rolling_ic"].mean()))
     print("Rolling IC std :", float(alpha_df["rolling_ic"].std()))
 

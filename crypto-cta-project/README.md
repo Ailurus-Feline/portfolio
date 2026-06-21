@@ -1,39 +1,53 @@
 # Crypto CTA Strategy
 
-This project implements a compact end-to-end crypto CTA research workflow based on moving-average trend following.
+This project uses a single reusable script to cover both trend-following and
+factor-research workflows.
 
-## Strategy Scope
-- Market: spot crypto
-- Primary symbols: BTC/USDT, ETH/USDT
-- Extended symbol scenario: SOL/USDT
-- Bar frequency: 1h
-- Signal family: dual moving-average trend following
+The main entry point is [crypto-cta-project/crypto_cta_strategy.py](crypto-cta-project/crypto_cta_strategy.py).
 
-## Research Pipeline
-1. Download OHLCV bars from exchange via CCXT.
-2. Fall back to realistic demo data when download is unavailable.
-3. Clean and validate data (sort, deduplicate, numeric conversion, missing-bar check).
-4. Build MA-based trading signals with one-bar lag to avoid look-ahead bias.
-5. Run backtests with turnover-based transaction costs.
-6. Compute core metrics and export results.
-7. Run scenario analyses for robustness checks.
+## Scope
+- Market: spot crypto.
+- Primary symbols: BTC/USDT, ETH/USDT.
+- Extended symbol scenario: SOL/USDT.
+- Bar frequency: 1h.
 
-## Core Components
-- Exchange/data access: `make_exchange`, `fetch_ohlcv_loop`, `download_or_demo`
-- Data quality: `clean_ohlcv`, `data_quality_report`
-- Signal/backtest: `add_ma_signal`, `add_ma_signal_long_only`, `backtest_signal`
-- Evaluation: `performance_summary`, `max_drawdown`
-- Visualization: `plot_price_and_mas`, `plot_equity`
-- Workflow entry points: `run_baseline_workflow`, `run_strategy_scenarios`, `main`
+## Trend Workflow
+1. Download OHLCV via CCXT (demo fallback when unavailable).
+2. Clean/validate bars (sort, deduplicate, numeric conversion, missing-bar check).
+3. Build MA signals with one-bar lag (anti-look-ahead).
+4. Backtest with turnover-based transaction costs.
+5. Run scenario analyses (window sweep, long-only vs long-short, fee sensitivity, extended symbols).
 
-## Scenario Analyses Included
-- Moving-average window sweep across multiple fast/slow pairs
-- Long-short versus long-only signal design
-- Transaction cost sensitivity across fee levels
-- Multi-symbol rerun with an additional asset
+## Factor Workflow
+1. Build future return label: `future_ret_1h`.
+2. Construct factors (momentum, volume-price, range position, RSI).
+3. Compute IC table:
+	- Pearson IC
+	- Clipped Pearson IC
+	- Spearman IC
+4. Evaluate rolling IC stability.
+5. Monetize via historical quantiles (80/20 rule by default):
+	- Thresholds use only historical factor values (`shift(1)` + rolling quantiles).
+	- PnL includes turnover-based fee deduction.
+6. Export metrics and sensitivity outputs for notebook/report conclusions.
 
-## Output Artifacts
-Generated files are saved under `results/`:
+## Design Guarantees
+- No look-ahead in signal/threshold logic.
+- Historical-only quantile thresholds.
+- Fee-adjusted PnL.
+- IC + rolling IC + monetization + metrics + sensitivity in one run.
+
+## Outputs
+
+### Data Artifacts
+Saved under [crypto-cta-project/data/clean](crypto-cta-project/data/clean):
+- `class2_ic_table.csv`
+
+### Report Artifacts
+Saved under [crypto-cta-project/results](crypto-cta-project/results):
+- `class2_backtest_metrics.csv`
+- `class2_sensitivity.csv`
+- `class2_quantile_bt_core.csv`
 - `ma_strategy_summary.csv`
 - `<SYMBOL>_1h_ma_backtest.csv`
 - `window_sweep.csv`
@@ -42,14 +56,14 @@ Generated files are saved under `results/`:
 - `extended_symbol_summary.csv`
 
 ## Running
-From the project root:
+From project root:
 
 ```bash
 python crypto_cta_strategy.py
 ```
 
-If your environment does not have exchange access, the script automatically switches to demo OHLCV data so the full pipeline can still run.
+If exchange access is blocked, the script automatically falls back to deterministic demo OHLCV so the full workflow still completes.
 
 ## Notes
-- This is a research baseline, not a production trading system.
-- Prioritize experiment correctness (data integrity, lagging, and cost modeling) before focusing on profitability.
+- This is a research/teaching framework, not a production trading engine.
+- Prioritize correctness (timestamp handling, lagging, fee modeling) before profitability.
