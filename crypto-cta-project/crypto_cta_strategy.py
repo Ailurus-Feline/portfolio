@@ -9,43 +9,19 @@ import numpy as np
 import pandas as pd
 import ccxt
 
-"""Crypto CTA research script with two integrated workflows.
-
-The script keeps a readable structure and combines:
-
-Trend workflow:
-1. Acquire OHLCV data from exchange APIs (or demo fallback).
-2. Clean and validate time-series data.
-3. Build MA-based signals with anti-look-ahead handling.
-4. Backtest with turnover-based transaction costs.
-5. Run robustness scenarios and export reports.
-
-Factor workflow:
-1. Build future-return label and multiple factors.
-2. Compute IC table (Pearson / clipped Pearson / Spearman).
-3. Evaluate rolling IC stability.
-4. Monetize factor via historical quantile thresholds (no look-ahead).
-5. Export equity/metrics/sensitivity artifacts.
-
-The implementation prefers clarity over micro-optimization so that each step
-can be studied and modified independently.
-"""
-
 
 pd.set_option("display.max_columns", 20)
 
-# End-to-end flow:
-# 1) data access -> 2) cleaning -> 3) signal -> 4) backtest -> 5) summary + plots
-# The script keeps each step in a separate pure-ish function for easier learning/testing.
-
-# Project paths
-PROJECT_ROOT = Path.cwd()
+PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_CLEAN = PROJECT_ROOT / "data" / "clean"
 RESULTS = PROJECT_ROOT / "results"
-CLASS2_DATA_OUT = DATA_CLEAN
-CLASS2_RESULTS_OUT = RESULTS
-for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS]:
+FIGURES = RESULTS / "figures"
+CSV_OUT = RESULTS / "csv"
+FACTOR_DATA_OUT = CSV_OUT
+FACTOR_RESULTS_OUT = CSV_OUT
+FACTOR_FIGURES_OUT = FIGURES
+for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS, FIGURES, CSV_OUT]:
     path_obj.mkdir(parents=True, exist_ok=True)
 
 # Baseline configuration from notebook
@@ -54,22 +30,14 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 TIMEFRAME = "1h"
 SINCE = "2020-01-01T00:00:00Z"
 LIMIT_PER_REQUEST = 1000
+MAX_FETCH_BATCHES = 200
+EXTENDED_SYMBOL = "SOL/USDT"
+HOURS_PER_DAY = 24
+HOURS_PER_WEEK = 24 * 7
 
 
 def make_exchange(exchange_id: str = EXCHANGE_ID):
-    """Create a configured CCXT exchange client.
-
-    Parameters
-    ----------
-    exchange_id:
-        Exchange name supported by ccxt (for example: "binance", "okx", "bybit").
-
-    Returns
-    -------
-    Exchange instance
-        A ccxt exchange client with built-in rate limiting enabled.
-    """
-    # `getattr` allows switching exchanges by string config, e.g., "binance" -> ccxt.binance.
+    """Create a CCXT exchange client with rate limiting enabled."""
     exchange_cls = getattr(ccxt, exchange_id)
     return exchange_cls({"enableRateLimit": True})
 
@@ -82,34 +50,7 @@ def fetch_ohlcv_loop(
     limit: int = 1000,
     max_batches: int = 50,
 ) -> pd.DataFrame:
-    """Fetch OHLCV candles in batches until data is exhausted or limits are hit.
-
-    Why loop in batches:
-    - Most exchange endpoints cap each response by a fixed limit.
-    - A single request usually cannot retrieve a long history.
-    - We advance the `since` cursor using the last returned timestamp.
-
-    Parameters
-    ----------
-    exchange:
-        ccxt exchange instance.
-    symbol:
-        Instrument symbol in ccxt format, e.g., BTC/USDT.
-    timeframe:
-        Candle interval, e.g., 1m, 1h, 1d.
-    since_iso:
-        ISO timestamp string for the start point.
-    limit:
-        Max rows per request.
-    max_batches:
-        Safety cap for total requests in one call.
-
-    Returns
-    -------
-    DataFrame
-        Columns: timestamp, open, high, low, close, volume.
-    """
-    # CCXT APIs accept/start from millisecond timestamps.
+    """Fetch OHLCV candles in batches."""
     since_ms = exchange.parse8601(since_iso)
     all_rows: list[list[float]] = []
 
@@ -120,7 +61,6 @@ def fetch_ohlcv_loop(
 
         all_rows.extend(rows)
         last_ts = rows[-1][0]
-        # +1 ms avoids refetching the last candle in the next request.
         next_since = last_ts + 1
 
         print(f"{symbol} batch {batch + 1:02d}: {len(rows)} rows, last = {exchange.iso8601(last_ts)}")
@@ -129,10 +69,8 @@ def fetch_ohlcv_loop(
             break
         since_ms = next_since
 
-        # Be polite to the exchange API.
         time.sleep(exchange.rateLimit / 1000 if getattr(exchange, "rateLimit", None) else 0.2)
 
-        # Stop when we are close to current time.
         if since_ms >= int(datetime.now(timezone.utc).timestamp() * 1000):
             break
 
@@ -147,25 +85,12 @@ def generate_demo_ohlcv(
     freq: str = "1h",
     seed: int = 7,
 ) -> pd.DataFrame:
-    """Generate synthetic OHLCV data for offline development.
-
-    This fallback lets the full research pipeline run even when:
-    - network access is blocked,
-    - the selected exchange endpoint is unstable,
-    - or API credentials/regions are restricted.
-
-    The synthetic process is simple on purpose:
-    - random-walk-like returns with symbol-specific volatility,
-    - deterministic seeding for reproducibility,
-    - plausible high/low spread around open/close.
-    """
-    # Use symbol-dependent seed so each asset is reproducible but still different.
+    """Generate deterministic synthetic OHLCV for offline fallback."""
     rng = np.random.default_rng(seed + sum(ord(char) for char in symbol))
     idx = pd.date_range(start=start, periods=periods, freq=freq, tz="UTC")
     drift = 0.00002
     vol = 0.015 if symbol.startswith("BTC") else 0.020
     rets = drift + vol * rng.standard_normal(periods)
-    # Build a positive price path from returns in log space.
     close = 100 * np.exp(np.cumsum(rets))
     open_ = np.r_[close[0], close[:-1]]
     spread = np.abs(0.004 * close * rng.standard_normal(periods))
@@ -174,7 +99,6 @@ def generate_demo_ohlcv(
     volume = np.abs(rng.normal(loc=1000, scale=300, size=periods))
     return pd.DataFrame(
         {
-            # Use ISO strings to avoid unit ambiguity across pandas versions.
             "timestamp": idx.astype(str),
             "open": open_,
             "high": high,
@@ -203,16 +127,9 @@ def parse_timestamp_auto(ts: pd.Series) -> pd.Series:
 
 
 def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
-    """Download OHLCV for all symbols; fallback to demo data on failure.
-
-    Design choice:
-    This function intentionally catches broad exceptions so the pipeline remains
-    runnable in educational/research settings. In production, you would usually
-    narrow exception classes and add retries/alerting.
-    """
+    """Download OHLCV for all symbols; fallback to demo data on failure."""
     data: dict[str, pd.DataFrame] = {}
     try:
-        # One exchange instance is reused for all symbols.
         exchange = make_exchange(EXCHANGE_ID)
         exchange.load_markets()
         for symbol in symbols:
@@ -222,40 +139,36 @@ def download_or_demo(symbols: list[str] = SYMBOLS) -> dict[str, pd.DataFrame]:
                 TIMEFRAME,
                 SINCE,
                 LIMIT_PER_REQUEST,
-                max_batches=10,
+                max_batches=MAX_FETCH_BATCHES,
             )
             if len(df) == 0:
                 raise RuntimeError(f"No data returned for {symbol}")
+            safe_name = symbol.replace("/", "_")
+            raw_path = DATA_RAW / f"{safe_name}_{TIMEFRAME}_raw.csv"
+            df.to_csv(raw_path, index=False)
+            print(f"Saved raw download: {raw_path}")
             data[symbol] = df
     except Exception as error:
-        # For teaching/research workflows, fallback keeps the pipeline runnable.
         print("Data download failed; using demo data instead.")
         print("Reason:", repr(error))
         for symbol in symbols:
-            data[symbol] = generate_demo_ohlcv(symbol)
+            demo_df = generate_demo_ohlcv(symbol)
+            safe_name = symbol.replace("/", "_")
+            raw_path = DATA_RAW / f"{safe_name}_{TIMEFRAME}_raw_demo.csv"
+            demo_df.to_csv(raw_path, index=False)
+            print(f"Saved raw demo data: {raw_path}")
+            data[symbol] = demo_df
     return data
 
 
-def clean_ohlcv(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> pd.DataFrame:
-    """Clean raw OHLCV into a consistent analysis-ready table.
-
-    Cleaning steps:
-    1. Convert integer timestamps to timezone-aware UTC datetime.
-    2. Sort chronologically and remove duplicate timestamps.
-    3. Keep canonical OHLCV columns.
-    4. Coerce non-numeric values to NaN and drop invalid rows.
-
-    Returns a clean DataFrame used by signal and backtest functions.
-    """
-    _ = timeframe  # Kept for interface compatibility with notebook.
+def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean raw OHLCV into analysis-ready format."""
     out = df.copy()
-    # Always normalize to UTC for consistent cross-exchange handling.
     out["datetime"] = parse_timestamp_auto(out["timestamp"])
     out = out.dropna(subset=["datetime"])
     out = out.sort_values("datetime").drop_duplicates("datetime").reset_index(drop=True)
     out = out[["datetime", "open", "high", "low", "close", "volume"]]
 
-    # Coerce bad values to NaN, then drop; this is safer than  failing mid-pipeline.
     for col in ["open", "high", "low", "close", "volume"]:
         out[col] = pd.to_numeric(out[col], errors="coerce")
     out = out.dropna().reset_index(drop=True)
@@ -294,18 +207,140 @@ def calculate_rsi(close: pd.Series, window: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
+def rolling_volatility(ret: pd.Series, window: int) -> pd.Series:
+    return ret.rolling(window).std()
+
+
+def rolling_autocorr(ret: pd.Series, window: int) -> pd.Series:
+    return ret.rolling(window).corr(ret.shift(1))
+
+
+def bollinger_position(close: pd.Series, window: int = 20, n_std: float = 2.0) -> pd.Series:
+    mid = close.rolling(window).mean()
+    std = close.rolling(window).std()
+    upper = mid + n_std * std
+    lower = mid - n_std * std
+    pos = (close - lower) / (upper - lower)
+    return pos
+
+
+def macd_signal_normalized(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    macd_signal = macd.ewm(span=signal, adjust=False).mean()
+    return (macd - macd_signal) / close
+
+
+def distance_from_ma(close: pd.Series, window: int) -> pd.Series:
+    ma = close.rolling(window).mean()
+    return close / ma - 1
+
+
+def money_flow_index(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, window: int = 14) -> pd.Series:
+    tp = (high + low + close) / 3.0
+    rmf = tp * volume
+    pos_flow = np.where(tp > tp.shift(1), rmf, 0.0)
+    neg_flow = np.where(tp < tp.shift(1), rmf, 0.0)
+    pos_sum = pd.Series(pos_flow, index=tp.index).rolling(window).sum()
+    neg_sum = pd.Series(neg_flow, index=tp.index).rolling(window).sum()
+    mfr = pos_sum / neg_sum.replace(0, np.nan)
+    mfi = 100 - (100 / (1 + mfr))
+    return mfi
+
+
+def _stochastic(series: pd.Series, window: int) -> pd.Series:
+    low = series.rolling(window).min()
+    high = series.rolling(window).max()
+    return (series - low) / (high - low) * 100
+
+
+def schaff_trend_cycle(close: pd.Series, cycle: int = 10) -> pd.Series:
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    pf1 = _stochastic(macd, cycle).ewm(span=3, adjust=False).mean()
+    stc = _stochastic(pf1, cycle).ewm(span=3, adjust=False).mean()
+    return stc
+
+
+def dmi_adx(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.DataFrame:
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(
+        np.where((up_move > down_move) & (up_move > 0), up_move, 0.0),
+        index=high.index,
+    )
+    minus_dm = pd.Series(
+        np.where((down_move > up_move) & (down_move > 0), down_move, 0.0),
+        index=high.index,
+    )
+
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    alpha = 1 / max(window, 1)
+    atr = tr.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+    plus_dm_s = plus_dm.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+    minus_dm_s = minus_dm.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+
+    plus_di = 100 * plus_dm_s / atr.replace(0, np.nan)
+    minus_di = 100 * minus_dm_s / atr.replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx = dx.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+
+    return pd.DataFrame({"plus_di": plus_di, "minus_di": minus_di, "adx": adx})
+
+
 def build_alpha_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    """Build class2 alpha factors and future-return target on cleaned OHLCV."""
+    """Build factor features and future-return target on cleaned OHLCV."""
     out = df.copy()
     out["ret_1h"] = out["close"].pct_change()
     out["future_ret_1h"] = out["close"].shift(-1) / out["close"] - 1
 
-    out["factor_mom_4h"] = momentum(out["close"], 4)
-    out["factor_mom_24h"] = momentum(out["close"], 24)
-    out["factor_mom_72h"] = momentum(out["close"], 72)
+    # Momentum (weekly windows mapped to hourly bars).
+    out["factor_mom_4w"] = momentum(out["close"], 4 * HOURS_PER_WEEK)
+    out["factor_mom_12w"] = momentum(out["close"], 12 * HOURS_PER_WEEK)
+    out["factor_mom_26w"] = momentum(out["close"], 26 * HOURS_PER_WEEK)
+    out["factor_mom_52w"] = momentum(out["close"], 52 * HOURS_PER_WEEK)
+
+    # Reversal.
+    out["factor_rev_1w"] = -out["close"].pct_change(HOURS_PER_WEEK)
+    out["factor_rev_2w"] = -out["close"].pct_change(2 * HOURS_PER_WEEK)
+
+    # Volatility and volatility change.
+    out["factor_vol_4w"] = rolling_volatility(out["ret_1h"], 4 * HOURS_PER_WEEK)
+    out["factor_vol_12w"] = rolling_volatility(out["ret_1h"], 12 * HOURS_PER_WEEK)
+    out["factor_vol_26w"] = rolling_volatility(out["ret_1h"], 26 * HOURS_PER_WEEK)
+    out["factor_vol_change"] = out["factor_vol_4w"] / out["factor_vol_12w"].replace(0, np.nan)
+
+    # Return autocorrelation.
+    out["factor_ret_autocorr_12w"] = rolling_autocorr(out["ret_1h"], 12 * HOURS_PER_WEEK)
+
+    # Existing baseline factors.
     out["factor_vol_price"] = volume_price_trend(out["close"], out["volume"], 24)
     out["factor_range_pos"] = range_position(out["close"], out["high"], out["low"], 48)
     out["factor_rsi_14"] = calculate_rsi(out["close"], window=14)
+
+    # Bollinger / MACD / distance to MA.
+    out["factor_bb_position_20"] = bollinger_position(out["close"], window=20)
+    out["factor_macd_signal"] = macd_signal_normalized(out["close"], fast=12, slow=26, signal=9)
+    out["factor_dist_ma_10"] = distance_from_ma(out["close"], window=10)
+    out["factor_dist_ma_50"] = distance_from_ma(out["close"], window=50)
+
+    # Advanced indicators.
+    out["factor_mfi_14"] = money_flow_index(out["high"], out["low"], out["close"], out["volume"], window=14)
+    out["factor_stc"] = schaff_trend_cycle(out["close"], cycle=10)
+    dmi = dmi_adx(out["high"], out["low"], out["close"], window=14)
+    out["factor_plus_di"] = dmi["plus_di"]
+    out["factor_minus_di"] = dmi["minus_di"]
+    out["factor_adx"] = dmi["adx"]
+    out["factor_dmi_spread"] = dmi["plus_di"] - dmi["minus_di"]
+
+    out = out.replace([np.inf, -np.inf], np.nan)
     return out
 
 
@@ -388,22 +423,33 @@ def backtest_metrics(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.S
     )
 
 
-def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame | pd.Series]:
-    """Reproduce class2 notebook requirements from this script only.
-
-    Export policy:
-    - Store tabular factor diagnostics under data/clean for data-like artifacts.
-    - Store strategy/report outputs under results for direct report usage.
-    - Keep class2 filename prefixes so artifacts are easy to find.
-    """
+def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame | pd.Series]:
+    """Run factor workflow and persist outputs."""
     btc_df = clean_data["BTC/USDT"].copy()
     alpha_df = build_alpha_dataset(btc_df)
     factor_cols = [col for col in alpha_df.columns if col.startswith("factor_")]
 
     ic_table = calc_ic_table(alpha_df, factor_cols)
 
-    selected_factor = "factor_mom_24h"
-    alpha_df["rolling_ic"] = rolling_ic(alpha_df[selected_factor], alpha_df["future_ret_1h"], window=2400)
+    min_obs = max(1000, int(len(alpha_df) * 0.2))
+    ranked = ic_table[(ic_table["n_obs"] >= min_obs)].dropna(subset=["clipped_ic"]).copy()
+    if ranked.empty:
+        selected_factor = ic_table.iloc[0]["factor"]
+        selected_ic = float(ic_table.iloc[0]["pearson_ic"])
+    else:
+        ranked["abs_clipped_ic"] = ranked["clipped_ic"].abs()
+        top_row = ranked.sort_values("abs_clipped_ic", ascending=False).iloc[0]
+        selected_factor = str(top_row["factor"])
+        selected_ic = float(top_row["pearson_ic"])
+    selected_direction = -1 if selected_ic < 0 else 1
+
+    valid_n = int(alpha_df[[selected_factor, "future_ret_1h"]].dropna().shape[0])
+    rolling_window = min(2400, max(200, valid_n // 5))
+    alpha_df["rolling_ic"] = rolling_ic(
+        alpha_df[selected_factor],
+        alpha_df["future_ret_1h"],
+        window=rolling_window,
+    )
 
     bt = quantile_monetization(
         alpha_df,
@@ -412,9 +458,11 @@ def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, 
         q_low=0.20,
         window=24 * 300,
         fee_bps=2.0,
-        direction=-1,
+        direction=selected_direction,
     )
     metrics = backtest_metrics(bt)
+    metrics["selected_direction"] = selected_direction
+    metrics["selected_factor"] = selected_factor
 
     sensitivity_rows: list[pd.Series] = []
     for q in [0.60, 0.70, 0.75, 0.80, 0.85]:
@@ -425,7 +473,7 @@ def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, 
             q_low=1 - q,
             window=24 * 60,
             fee_bps=2.0,
-            direction=-1,
+            direction=selected_direction,
         )
         tmp_metrics = backtest_metrics(tmp_bt)
         tmp_metrics["q_high"] = q
@@ -433,13 +481,80 @@ def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, 
         sensitivity_rows.append(tmp_metrics)
     sensitivity = pd.DataFrame(sensitivity_rows)
 
-    ic_table.to_csv(CLASS2_DATA_OUT / "class2_ic_table.csv", index=False)
-    metrics.to_frame(name="value").to_csv(CLASS2_RESULTS_OUT / "class2_backtest_metrics.csv")
-    sensitivity.to_csv(CLASS2_RESULTS_OUT / "class2_sensitivity.csv", index=False)
-    bt[["datetime", "signal", "pnl", "equity"]].to_csv(CLASS2_RESULTS_OUT / "class2_quantile_bt_core.csv", index=False)
+    alpha_df.to_csv(FACTOR_DATA_OUT / "factor_dataset.csv", index=False)
+    ic_table.to_csv(FACTOR_DATA_OUT / "factor_ic_table.csv", index=False)
+    alpha_df[["datetime", selected_factor, "future_ret_1h", "rolling_ic"]].to_csv(
+        FACTOR_DATA_OUT / "factor_rolling_ic.csv", index=False
+    )
+    pd.DataFrame(
+        [
+            {
+                "selected_factor": selected_factor,
+                "selected_pearson_ic": selected_ic,
+                "selected_direction": selected_direction,
+                "selection_min_obs": min_obs,
+                "selected_n_obs": valid_n,
+                "rolling_window": rolling_window,
+            }
+        ]
+    ).to_csv(FACTOR_DATA_OUT / "factor_selection.csv", index=False)
 
-    print("Class2 data saved to:", CLASS2_DATA_OUT.resolve())
-    print("Class2 reports saved to:", CLASS2_RESULTS_OUT.resolve())
+    metrics.to_frame(name="value").to_csv(FACTOR_RESULTS_OUT / "factor_backtest_metrics.csv")
+    sensitivity.to_csv(FACTOR_RESULTS_OUT / "factor_sensitivity.csv", index=False)
+    bt.to_csv(FACTOR_RESULTS_OUT / "factor_quantile_bt_full.csv", index=False)
+    bt[["datetime", "signal", "pnl", "equity"]].to_csv(FACTOR_RESULTS_OUT / "factor_quantile_bt_core.csv", index=False)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.bar(ic_table["factor"], ic_table["pearson_ic"], alpha=0.8, label="Pearson IC")
+    ax.plot(ic_table["factor"], ic_table["clipped_ic"], marker="o", label="Clipped Pearson")
+    ax.plot(ic_table["factor"], ic_table["spearman_ic"], marker="s", label="Spearman")
+    ax.set_title("Factor IC Comparison")
+    ax.set_ylabel("IC")
+    ax.tick_params(axis="x", rotation=30)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_ic_comparison.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(alpha_df["datetime"], alpha_df["rolling_ic"], label="Rolling IC")
+    ax.axhline(0.0, linestyle="--", linewidth=1)
+    ax.set_title(f"Rolling IC: {selected_factor}")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("IC")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_rolling_ic.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(bt["datetime"], bt["equity"], label="Equity")
+    ax.set_title(f"Quantile Monetization Equity: {selected_factor}")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_equity_curve.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(sensitivity["q_high"], sensitivity["sharpe"], marker="o")
+    ax.set_title("Sensitivity: Quantile Threshold vs Sharpe")
+    ax.set_xlabel("Upper Quantile")
+    ax.set_ylabel("Sharpe")
+    fig.tight_layout()
+    fig.savefig(FACTOR_FIGURES_OUT / "factor_sensitivity_sharpe.png", dpi=150)
+    plt.show()
+    plt.close(fig)
+
+    print("Factor data saved to:", FACTOR_DATA_OUT.resolve())
+    print("Factor reports saved to:", FACTOR_RESULTS_OUT.resolve())
+    print("Factor figures saved to:", FACTOR_FIGURES_OUT.resolve())
+    print("Selected factor:", selected_factor, "direction:", selected_direction)
+    print("Selected n_obs:", valid_n, "rolling_window:", rolling_window)
     print("Rolling IC mean:", float(alpha_df["rolling_ic"].mean()))
     print("Rolling IC std :", float(alpha_df["rolling_ic"].std()))
 
@@ -453,14 +568,7 @@ def run_class2_alpha_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, 
 
 
 def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[str, object]:
-    """Compute a compact data-quality summary for quick sanity checks.
-
-    The report helps answer:
-    - Are there duplicate timestamps?
-    - Are expected bars missing in the time grid?
-    - What is the actual start/end coverage?
-    """
-    # Build the expected evenly spaced timeline and compare with actual timestamps.
+    """Compute data-quality summary for one OHLCV table."""
     expected = pd.date_range(df["datetime"].min(), df["datetime"].max(), freq=timeframe, tz="UTC")
     actual = pd.DatetimeIndex(df["datetime"])
     missing = expected.difference(actual)
@@ -474,86 +582,40 @@ def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[st
 
 
 def add_ma_signal(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Build a long-short moving-average signal with anti-look-ahead handling.
-
-    Signal logic:
-    - fast MA > slow MA  -> +1 (long)
-    - fast MA <= slow MA -> -1 (short)
-
-    Execution logic:
-    - position is signal shifted by 1 bar, so decisions at t affect trading at t+1.
-    - this is critical to avoid look-ahead bias in backtests.
-    """
+    """Build long-short MA signal with one-bar execution lag."""
     out = df.copy()
-    # Return is calculated on close-to-close bars.
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
     out[f"ma_{slow}"] = out["close"].rolling(slow).mean()
     out["signal"] = np.where(out[f"ma_{fast}"] > out[f"ma_{slow}"], 1, -1)
-    # Before slow MA is available, there is no valid signal.
     out.loc[out[f"ma_{slow}"].isna(), "signal"] = 0
-    # One-bar shift is essential: trade at t+1 using signal formed at t.
     out["position"] = out["signal"].shift(1).fillna(0)
     return out
 
 
 def backtest_signal(df: pd.DataFrame, fee_bps: float = 2.0) -> pd.DataFrame:
-    """Run a simple vectorized backtest with turnover-based transaction costs.
-
-    Return model per bar:
-    strategy_ret = position * ret - cost
-
-    Cost model:
-    - turnover = absolute change in position.
-    - fee is charged in basis points on turnover.
-
-    Notes:
-    - This is intentionally minimal and does not model slippage/latency.
-    - Equity here is cumulative arithmetic return around a 1.0 baseline.
-    """
+    """Run vectorized backtest with turnover-based costs."""
     out = df.copy()
-    # Convert basis points into decimal fee rate.
     fee_rate = fee_bps / 10_000
-    # Turnover is absolute position change; 0->1 and 1->-1 are both charged.
     out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
     out["cost"] = out["turnover"] * fee_rate
-    # Strategy PnL: exposure * return - transaction costs.
     out["strategy_ret"] = out["position"] * out["ret"] - out["cost"]
     out["strategy_ret"] = out["strategy_ret"].fillna(0)
-    # This notebook-style equity uses cumulative returns around 1.0.
     out["equity"] = 1 + (out["strategy_ret"]).cumsum()
     out["buy_hold"] = 1 + (out["ret"].fillna(0)).cumsum()
     return out
 
 
 def max_drawdown(equity: pd.Series) -> float:
-    """Compute maximum drawdown from an equity curve.
-
-    Drawdown is measured as the distance from running peak equity.
-    The minimum drawdown value over time is reported as max drawdown.
-    """
+    """Compute maximum drawdown from an equity curve."""
     running_max = equity.cummax()
-    # Drawdown is distance from running peak; min value is max drawdown.
     dd = (equity - running_max) / 1
     return float(dd.min())
 
 
 def performance_summary(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.Series:
-    """Summarize key performance metrics for a backtest result table.
-
-    Included metrics:
-    - Total Return
-    - Annualized Return
-    - Annualized Volatility
-    - Sharpe (return/vol)
-    - Max Drawdown
-    - Average Turnover
-
-    Annualization assumes equally spaced bars and uses periods_per_year
-    (default configured for 1-hour bars).
-    """
+    """Summarize key performance metrics for a backtest."""
     r = bt["strategy_ret"].dropna()
-    # Annualization assumes equally spaced bars.
     ann_ret = (bt["equity"].iloc[-1]) ** (periods_per_year / max(len(bt), 1)) - 1
     ann_vol = r.std() * np.sqrt(periods_per_year)
     sharpe = ann_ret / ann_vol if ann_vol > 0 else np.nan
@@ -570,14 +632,7 @@ def performance_summary(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> p
 
 
 def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Build a long-only MA signal variant.
-
-    Difference from the baseline long-short signal:
-    - Bull regime: +1
-    - Non-bull regime: 0 (flat), not -1
-
-    This isolates whether short exposure is helping or hurting performance.
-    """
+    """Build long-only MA signal variant."""
     out = df.copy()
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
@@ -588,14 +643,8 @@ def add_ma_signal_long_only(df: pd.DataFrame, fast: int = 20, slow: int = 60) ->
     return out
 
 
-def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> None:
-    """Plot close price and moving averages for visual sanity checks.
-
-    This chart is useful to verify:
-    - MA crossover timing,
-    - trend regime behavior,
-    - and whether signal windows are too fast/slow for the asset.
-    """
+def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str, save_path: Path | None = None) -> None:
+    """Plot close price and moving averages."""
     _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["close"], label="Close")
     ax.plot(bt["datetime"], bt[f"ma_{fast}"], label=f"MA_{fast}")
@@ -605,14 +654,15 @@ def plot_price_and_mas(bt: pd.DataFrame, fast: int, slow: int, title: str) -> No
     ax.set_ylabel("Price")
     ax.legend()
     plt.tight_layout()
+    if save_path is not None:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150)
     plt.show()
+    plt.close()
 
 
-def plot_equity(bt: pd.DataFrame, title: str) -> None:
-    """Plot strategy equity versus buy-and-hold benchmark.
-
-    This chart helps compare active signal behavior against passive exposure.
-    """
+def plot_equity(bt: pd.DataFrame, title: str, save_path: Path | None = None) -> None:
+    """Plot strategy equity against buy-and-hold."""
     _, ax = plt.subplots(figsize=(12, 5))
     ax.plot(bt["datetime"], bt["equity"], label="MA strategy")
     ax.plot(bt["datetime"], bt["buy_hold"], label="Buy and hold")
@@ -621,80 +671,60 @@ def plot_equity(bt: pd.DataFrame, title: str) -> None:
     ax.set_ylabel("Growth of $1")
     ax.legend()
     plt.tight_layout()
+    if save_path is not None:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=150)
     plt.show()
+    plt.close()
+
+
+def evaluate_ma_strategy(clean_df: pd.DataFrame, fast: int = 40, slow: int = 100, fee_bps: float = 2.0) -> tuple[pd.DataFrame, pd.Series]:
+    """Return MA backtest table and summary for one symbol."""
+    signal_df = add_ma_signal(clean_df, fast=fast, slow=slow)
+    bt_df = backtest_signal(signal_df, fee_bps=fee_bps)
+    return bt_df, performance_summary(bt_df)
 
 
 def run_baseline_workflow(symbols: list[str]) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[str, dict[str, pd.DataFrame | pd.Series]]]:
-    """Run the baseline research workflow end-to-end.
-
-    Pipeline stages:
-    1. Download/fallback data.
-    2. Clean + validate + persist data.
-    3. Build signals and run backtests per symbol.
-    4. Persist summary and detailed outputs.
-
-    Returns
-    -------
-    clean_data:
-        Per-symbol cleaned datasets.
-    summary_table:
-        Per-symbol performance summary table.
-    results:
-        Per-symbol dict containing backtest table and summary series.
-    """
-    # Step 1: ingest raw market data (real or demo fallback).
+    """Run baseline trend workflow and persist outputs."""
     raw_data = download_or_demo(symbols)
 
-    # Step 2: clean and persist a canonical dataset per symbol.
     clean_data: dict[str, pd.DataFrame] = {}
     for symbol, raw_df in raw_data.items():
         clean_df = clean_ohlcv(raw_df)
         clean_data[symbol] = clean_df
         safe_name = symbol.replace("/", "_")
         clean_df.to_parquet(DATA_CLEAN / f"{safe_name}_{TIMEFRAME}.parquet", index=False)
+        clean_df.to_csv(CSV_OUT / f"{safe_name}_{TIMEFRAME}.csv", index=False)
         print(symbol, data_quality_report(clean_df))
 
     fast = 40
     slow = 100
-    # Step 3: generate baseline signal/backtest for each symbol.
     results: dict[str, dict[str, pd.DataFrame | pd.Series]] = {}
     for symbol, clean_df in clean_data.items():
-        signal_df = add_ma_signal(clean_df, fast=fast, slow=slow)
-        bt_df = backtest_signal(signal_df, fee_bps=2.0)
-        results[symbol] = {"backtest": bt_df, "summary": performance_summary(bt_df)}
+        bt_df, summary = evaluate_ma_strategy(clean_df, fast=fast, slow=slow, fee_bps=2.0)
+        results[symbol] = {"backtest": bt_df, "summary": summary}
 
     summary_table = pd.DataFrame({symbol: obj["summary"] for symbol, obj in results.items()}).T
-    summary_table.to_csv(RESULTS / "ma_strategy_summary.csv")
+    summary_table.to_csv(CSV_OUT / "ma_strategy_summary.csv")
 
-    # Persist per-symbol backtest details for later inspection.
     for symbol, obj in results.items():
         safe_name = symbol.replace("/", "_")
         bt_df = obj["backtest"]
         if isinstance(bt_df, pd.DataFrame):
-            bt_df.to_csv(RESULTS / f"{safe_name}_{TIMEFRAME}_ma_backtest.csv", index=False)
+            bt_df.to_csv(CSV_OUT / f"{safe_name}_{TIMEFRAME}_ma_backtest.csv", index=False)
 
     return clean_data, summary_table, results
 
 
 def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Run scenario analyses on top of the same baseline framework.
-
-    Scenarios:
-    1. MA window sweep.
-    2. Long-only vs long-short.
-    3. Transaction-cost sensitivity.
-    4. Symbol-universe extension.
-
-    Keeping all scenarios under the same function set ensures comparability.
-    """
+    """Run scenario analyses on top of the baseline workflow."""
     outputs: dict[str, pd.DataFrame] = {}
 
-    # Scenario 1: Fast/slow window sweep.
     window_pairs = [(10, 30), (20, 60), (40, 100), (60, 180)]
     rows: list[dict[str, float | int | str]] = []
     base_symbol = "BTC/USDT"
     for fast, slow in window_pairs:
-        # Re-run the full signal/backtest stack under each parameter pair.
         signal_df = add_ma_signal(clean_data[base_symbol], fast=fast, slow=slow)
         bt_df = backtest_signal(signal_df, fee_bps=2.0)
         perf = performance_summary(bt_df)
@@ -711,10 +741,9 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
             }
         )
     window_sweep = pd.DataFrame(rows).sort_values("sharpe", ascending=False).reset_index(drop=True)
-    window_sweep.to_csv(RESULTS / "window_sweep.csv", index=False)
+    window_sweep.to_csv(CSV_OUT / "window_sweep.csv", index=False)
     outputs["window_sweep"] = window_sweep
 
-    # Scenario 2: Long-only versus long-short.
     fast, slow = 40, 100
     ls_signal = add_ma_signal(clean_data[base_symbol], fast=fast, slow=slow)
     lo_signal = add_ma_signal_long_only(clean_data[base_symbol], fast=fast, slow=slow)
@@ -726,14 +755,12 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
             "long_only": performance_summary(lo_bt),
         }
     ).T
-    long_only_vs_long_short.to_csv(RESULTS / "long_only_vs_long_short.csv")
+    long_only_vs_long_short.to_csv(CSV_OUT / "long_only_vs_long_short.csv")
     outputs["long_only_vs_long_short"] = long_only_vs_long_short
 
-    # Scenario 3: Transaction-cost sensitivity.
     fee_bps_grid = [0.5, 1.0, 2.0, 5.0, 10.0]
     fee_rows: list[dict[str, float]] = []
     for fee_bps in fee_bps_grid:
-        # Isolate fee impact by reusing the same signal and only changing fee.
         bt_df = backtest_signal(ls_signal, fee_bps=fee_bps)
         perf = performance_summary(bt_df)
         fee_rows.append(
@@ -746,15 +773,26 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
             }
         )
     fee_sensitivity = pd.DataFrame(fee_rows).sort_values("fee_bps").reset_index(drop=True)
-    fee_sensitivity.to_csv(RESULTS / "fee_sensitivity.csv", index=False)
+    fee_sensitivity.to_csv(CSV_OUT / "fee_sensitivity.csv", index=False)
     outputs["fee_sensitivity"] = fee_sensitivity
 
-    # Scenario 4: Add one more symbol and rerun baseline.
-    extended_symbols = sorted(set(list(clean_data.keys()) + ["SOL/USDT"]))
-    # Reusing baseline workflow keeps evaluation rules identical across scenarios.
-    clean_plus, summary_plus, _ = run_baseline_workflow(extended_symbols)
-    _ = clean_plus
-    summary_plus.to_csv(RESULTS / "extended_symbol_summary.csv")
+    extended_clean = dict(clean_data)
+    if EXTENDED_SYMBOL not in extended_clean:
+        ext_raw = download_or_demo([EXTENDED_SYMBOL])[EXTENDED_SYMBOL]
+        ext_df = clean_ohlcv(ext_raw)
+        extended_clean[EXTENDED_SYMBOL] = ext_df
+        safe_name = EXTENDED_SYMBOL.replace("/", "_")
+        ext_df.to_parquet(DATA_CLEAN / f"{safe_name}_{TIMEFRAME}.parquet", index=False)
+        ext_df.to_csv(CSV_OUT / f"{safe_name}_{TIMEFRAME}.csv", index=False)
+        print(EXTENDED_SYMBOL, data_quality_report(ext_df))
+
+    summary_plus = pd.DataFrame(
+        {
+            symbol: evaluate_ma_strategy(df, fast=40, slow=100, fee_bps=2.0)[1]
+            for symbol, df in extended_clean.items()
+        }
+    ).T
+    summary_plus.to_csv(CSV_OUT / "extended_symbol_summary.csv")
     outputs["extended_symbol_summary"] = summary_plus
 
     print("Saved scenario outputs to:", RESULTS.resolve())
@@ -762,11 +800,7 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
 
 
 def main() -> None:
-    """Execute baseline workflow and then scenario analyses.
-
-    This main function is intentionally linear so new learners can trace
-    the full research path in one pass.
-    """
+    """Execute baseline workflow, scenarios, and factor workflow."""
     print("[Stage 1/3] Running baseline workflow...")
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
@@ -776,14 +810,24 @@ def main() -> None:
     btc = results["BTC/USDT"]["backtest"]
     if isinstance(btc, pd.DataFrame):
         print("[Stage 2/3] Generating baseline plots...")
-        plot_price_and_mas(btc, fast=40, slow=100, title="BTC/USDT close price and moving averages")
-        plot_equity(btc, title="BTC/USDT equity curve")
+        plot_price_and_mas(
+            btc,
+            fast=40,
+            slow=100,
+            title="BTC/USDT close price and moving averages",
+            save_path=FIGURES / "baseline_btc_price_ma.png",
+        )
+        plot_equity(
+            btc,
+            title="BTC/USDT equity curve",
+            save_path=FIGURES / "baseline_btc_equity.png",
+        )
 
     print("[Stage 3/3] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
 
-    print("[Stage 4/4] Running class2 alpha workflow...")
-    run_class2_alpha_workflow(clean_data)
+    print("[Stage 4/4] Running factor research workflow...")
+    run_factor_research_workflow(clean_data)
 
 
 if __name__ == "__main__":
