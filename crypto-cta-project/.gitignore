@@ -1,7 +1,4 @@
 # Local generated artifacts
-results/
-data/raw/
-data/clean/
 __pycache__/
 **/*.pyc
 

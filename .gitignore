@@ -3,7 +3,7 @@ data/*
 
 figures/*
 !figures/.gitkeep
-results/
+/results/
 
 .DS_Store
 kaggle.json
