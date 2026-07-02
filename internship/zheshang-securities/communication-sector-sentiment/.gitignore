@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Data (keep structure, ignore contents)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Outputs (regenerable)
+output/figures/*
+!output/figures/.gitkeep
+output/*.csv
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
