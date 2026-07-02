@@ -999,10 +999,10 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
 
 def main() -> None:
     """Execute baseline workflow, scenarios, and factor workflow."""
-    print("[Stage 1/3] Running baseline workflow...")
+    print("[Stage 1/4] Running baseline workflow...")
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
-    print("[Stage 2/3] Baseline summary:")
+    print("[Stage 2/4] Baseline summary:")
     print(summary_table)
 
     btc = results["BTC/USDT"]["backtest"]
@@ -1021,7 +1021,7 @@ def main() -> None:
             save_path=FIGURES / "baseline_btc_equity.png",
         )
 
-    print("[Stage 3/3] Running scenario analyses...")
+    print("[Stage 3/4] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
 
     print("[Stage 4/4] Running factor research workflow...")
