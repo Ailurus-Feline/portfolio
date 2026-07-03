@@ -2,14 +2,41 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from src.config import (
+    DEFAULT_WEIGHTS,
     EMA_SPAN,
     Z_OVERCOOL,
     Z_OVERHEAT,
 )
+
+BREADTH_COLUMNS = ("new_high_low_net", "above_ma", "positive_return")
+PCT_COLUMNS = tuple(f"{column}_pct" for column in BREADTH_COLUMNS)
+
+
+@dataclass(frozen=True)
+class SentimentParams:
+    """Configurable sentiment construction parameters."""
+
+    weights: tuple[float, float, float] = DEFAULT_WEIGHTS
+    ema_span: int = EMA_SPAN
+
+    def __post_init__(self) -> None:
+        if len(self.weights) != 3:
+            raise ValueError("weights must contain exactly three values.")
+        if not np.isclose(sum(self.weights), 1.0):
+            raise ValueError("weights must sum to 1.")
+        if self.ema_span < 2:
+            raise ValueError("ema_span must be at least 2.")
+
+
+def default_sentiment_params() -> SentimentParams:
+    """Return the v1 default parameter set."""
+    return SentimentParams(weights=DEFAULT_WEIGHTS, ema_span=EMA_SPAN)
 
 
 def expanding_percentile_rank(series: pd.Series) -> pd.Series:
@@ -32,6 +59,14 @@ def expanding_percentile_rank(series: pd.Series) -> pd.Series:
     return pd.Series(out, index=series.index, name=f"{series.name}_pct")
 
 
+def prepare_percentile_features(indicators: pd.DataFrame) -> pd.DataFrame:
+    """Percentile-rank the three breadth metrics once for grid-search reuse."""
+    result = indicators.copy()
+    for column in BREADTH_COLUMNS:
+        result[f"{column}_pct"] = expanding_percentile_rank(indicators[column])
+    return result
+
+
 def assign_regime_labels(z: pd.Series) -> pd.Series:
     """Map z-scores to overheated, overcooled, or neutral labels."""
     regime = pd.Series(pd.NA, index=z.index, dtype="object")
@@ -42,22 +77,32 @@ def assign_regime_labels(z: pd.Series) -> pd.Series:
     return regime
 
 
-def composite_sentiment(indicators: pd.DataFrame) -> pd.DataFrame:
-    """Percentile-rank the three breadth metrics and combine them with equal weights."""
-    result = indicators.copy()
-
-    for column in ("new_high_low_net", "above_ma", "positive_return"):
-        result[f"{column}_pct"] = expanding_percentile_rank(indicators[column])
-
-    pct_columns = [f"{col}_pct" for col in ("new_high_low_net", "above_ma", "positive_return")]
-    result["sentiment_raw"] = result[pct_columns].mean(axis=1)
-    result["sentiment_slow"] = result["sentiment_raw"].ewm(span=EMA_SPAN, adjust=False).mean()
+def composite_from_percentiles(
+    features: pd.DataFrame,
+    params: SentimentParams,
+) -> pd.DataFrame:
+    """Build sentiment columns from precomputed percentile features."""
+    result = features.copy()
+    weight_array = np.asarray(params.weights, dtype=float)
+    result["sentiment_raw"] = result.loc[:, PCT_COLUMNS].to_numpy() @ weight_array
+    result["sentiment_slow"] = result["sentiment_raw"].ewm(span=params.ema_span, adjust=False).mean()
 
     expanding_mean = result["sentiment_slow"].expanding(min_periods=2).mean()
     expanding_std = result["sentiment_slow"].expanding(min_periods=2).std()
     result["sentiment_z"] = (result["sentiment_slow"] - expanding_mean) / expanding_std
     result["regime"] = assign_regime_labels(result["sentiment_z"])
     return result
+
+
+def composite_sentiment(
+    indicators: pd.DataFrame,
+    params: SentimentParams | None = None,
+) -> pd.DataFrame:
+    """Percentile-rank breadth metrics and combine them with configurable weights."""
+    if params is None:
+        params = default_sentiment_params()
+    features = prepare_percentile_features(indicators)
+    return composite_from_percentiles(features, params)
 
 
 def select_analysis_rows(sentiment: pd.DataFrame) -> pd.DataFrame:

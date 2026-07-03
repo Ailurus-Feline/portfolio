@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.config import FIGURES_DIR, OUTPUT_CSV, OUTPUT_DIR, OUTPUT_FIGURE, PROCESSED_DATA_DIR
+from src.config import PROCESSED_DATA_DIR, V1_FIGURES_DIR, V1_OUTPUT_CSV, V1_OUTPUT_DIR, V1_OUTPUT_FIGURE
 from src.data_loader import load_market_data
 from src.indicators import compute_breadth_indicators
 from src.plot import plot_sentiment_vs_index
@@ -23,15 +23,15 @@ def run_pipeline() -> pd.DataFrame:
     sentiment = composite_sentiment(indicators)
     result = select_analysis_rows(merge_with_index(sentiment, market["index"]))
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    V1_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    V1_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    result.to_csv(OUTPUT_CSV, index=False)
-    plot_sentiment_vs_index(result, OUTPUT_FIGURE)
+    result.to_csv(V1_OUTPUT_CSV, index=False)
+    plot_sentiment_vs_index(result, V1_OUTPUT_FIGURE)
 
-    print(f"Wrote {OUTPUT_CSV}")
-    print(f"Wrote {OUTPUT_FIGURE}")
+    print(f"Wrote {V1_OUTPUT_CSV}")
+    print(f"Wrote {V1_OUTPUT_FIGURE}")
     print(f"Rows: {len(result):,}")
     return result
 
