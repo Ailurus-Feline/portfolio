@@ -102,8 +102,6 @@ Optional for later stages:
 
 All price data should start from **2008-01-01**. Because the longest lookback is 120 trading days, breadth indicators become stable around **mid-2008**.
 
-Raw data is not included in this repository.
-
 ## Quick Start
 
 ```bash
@@ -117,7 +115,7 @@ python3 -m src.v2_main   # v2 grid search + diagnostics
 
 ## Outputs
 
-Results are written under `output/v1/` and `output/v2/` (regenerable; gitignored except `.gitkeep`).
+Results are written under `output/v1/` and `output/v2/`.
 
 ### v1 — Baseline Sentiment Index
 
@@ -168,7 +166,7 @@ Uses a chronological **6-2-2** split (train / valid / final) and **Rank IC** as 
 electronics-sector-sentiment/
 ├── README.md
 ├── requirements.txt
-├── data/raw/              # input CSVs (gitignored)
+├── data/raw/              # input CSVs
 ├── data/processed/        # intermediate tables
 ├── src/
 │   ├── main.py            # v1 entry point
