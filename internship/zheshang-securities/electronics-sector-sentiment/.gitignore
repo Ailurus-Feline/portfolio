@@ -8,6 +8,8 @@ venv/
 # Data (keep structure, ignore contents)
 data/raw/*
 !data/raw/.gitkeep
+data/raw/~$*
+data/raw/*.xlsx
 data/processed/*
 !data/processed/.gitkeep
 
