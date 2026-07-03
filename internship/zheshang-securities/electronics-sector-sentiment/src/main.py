@@ -8,7 +8,7 @@ from src.config import FIGURES_DIR, OUTPUT_CSV, OUTPUT_DIR, OUTPUT_FIGURE, PROCE
 from src.data_loader import load_market_data
 from src.indicators import compute_breadth_indicators
 from src.plot import plot_sentiment_vs_index
-from src.sentiment import composite_sentiment, merge_with_index
+from src.sentiment import composite_sentiment, merge_with_index, select_analysis_rows
 
 
 def run_pipeline() -> pd.DataFrame:
@@ -18,11 +18,10 @@ def run_pipeline() -> pd.DataFrame:
     indicators = compute_breadth_indicators(
         close_panel=market["close_panel"],
         valid_panel=market["valid_panel"],
-    )
-    indicators = indicators.reset_index(names="date")
+    ).reset_index(names="date")
 
     sentiment = composite_sentiment(indicators)
-    result = merge_with_index(sentiment, market["index"])
+    result = select_analysis_rows(merge_with_index(sentiment, market["index"]))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,7 +32,7 @@ def run_pipeline() -> pd.DataFrame:
 
     print(f"Wrote {OUTPUT_CSV}")
     print(f"Wrote {OUTPUT_FIGURE}")
-    print(f"Rows: {len(result):,}; plot rows: {result['sentiment_z'].notna().sum():,}")
+    print(f"Rows: {len(result):,}")
     return result
 
 

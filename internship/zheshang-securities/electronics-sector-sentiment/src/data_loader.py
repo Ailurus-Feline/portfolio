@@ -34,9 +34,16 @@ def load_trading_calendar(path: Path = CALENDAR_FILE) -> pd.DatetimeIndex:
 def load_constituents_history(path: Path = HISTORY_FILE) -> pd.DataFrame:
     """Load constituent membership periods."""
     history = pd.read_csv(path, dtype=str).fillna("")
-    history["in_date"] = pd.to_datetime(history["in_date"], errors="coerce")
-    history["out_date"] = pd.to_datetime(history["out_date"], errors="coerce")
+    history["in_date"] = _parse_dates(history["in_date"])
+    history["out_date"] = _parse_dates(history["out_date"])
     return history
+
+
+def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse mixed Wind export date formats into normalized timestamps."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return series
+    return pd.to_datetime(series.astype(str), format="mixed", errors="coerce")
 
 
 def load_index(path: Path = INDEX_FILE) -> pd.DataFrame:
@@ -44,7 +51,7 @@ def load_index(path: Path = INDEX_FILE) -> pd.DataFrame:
     index_df = pd.read_csv(path)
     date_col = index_df.columns[0]
     index_df = index_df.rename(columns={date_col: "date"})
-    index_df["date"] = pd.to_datetime(index_df["date"])
+    index_df["date"] = _parse_dates(index_df["date"])
     index_df["close"] = _parse_numeric(index_df["close"])
     return index_df.loc[:, ["date", "close"]].sort_values("date").reset_index(drop=True)
 
@@ -59,7 +66,7 @@ def load_prices_long(raw_dir: Path = RAW_DATA_DIR) -> pd.DataFrame:
     usecols = ["date", "symbol", "close", "is_trading"]
     for file_path in files:
         chunk = pd.read_csv(file_path, usecols=usecols, dtype={"date": str, "symbol": str, "is_trading": str})
-        chunk["date"] = pd.to_datetime(chunk["date"], format="%Y-%m-%d")
+        chunk["date"] = _parse_dates(chunk["date"])
         chunk["close"] = _parse_numeric(chunk["close"])
         frames.append(chunk)
 
