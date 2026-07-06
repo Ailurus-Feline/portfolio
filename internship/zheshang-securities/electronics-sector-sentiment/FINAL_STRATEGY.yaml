@@ -44,3 +44,5 @@ artifacts:
   config: output/v3/best_config.yaml
   daily: output/v3/champion/backtest_daily.csv
   equity_curve: output/v3/champion/figures/equity_curve.png
+  pnl_vs_benchmark: output/v3/champion/figures/pnl_vs_benchmark.png
+  final_pnl: output/final_pnl_vs_benchmark.png

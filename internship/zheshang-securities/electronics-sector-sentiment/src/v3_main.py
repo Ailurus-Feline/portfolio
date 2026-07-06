@@ -21,6 +21,7 @@ from src.backtest import (
 )
 from src.config import (
     BACKTEST_CONFIG_FILE,
+    FINAL_PNL_FIGURE,
     V3_BEST_CONFIG,
     V3_CERTIFIED_ALPHAS,
     V3_CHAMPION_ALPHA,
@@ -32,9 +33,10 @@ from src.config import (
     V3_EXPLORATORY_ALPHAS_DIR,
     V3_MATRIX_RESULTS,
     V3_OPT_GRID_RESULTS,
+    V3_PNL_FIGURE,
     V3_REPORT,
 )
-from src.plot import plot_equity_curve
+from src.plot import plot_equity_curve, plot_pnl_vs_benchmark
 from src.strategy_rules import RULES, RULE_DESCRIPTIONS, make_baseline_target
 
 
@@ -254,6 +256,18 @@ def run_v3_champion() -> pd.DataFrame:
         daily,
         fig_dir / "equity_curve.png",
         title=f"v3 Champion: {V3_CHAMPION_ALPHA} vs Buy & Hold",
+    )
+    plot_pnl_vs_benchmark(
+        daily,
+        V3_PNL_FIGURE,
+        title="Final Strategy: advance_decline vs Buy & Hold (801080)",
+        initial_capital=config.initial_capital,
+    )
+    plot_pnl_vs_benchmark(
+        daily,
+        FINAL_PNL_FIGURE,
+        title="Final Strategy: advance_decline vs Buy & Hold (801080)",
+        initial_capital=config.initial_capital,
     )
 
     full = summarize_performance(daily)

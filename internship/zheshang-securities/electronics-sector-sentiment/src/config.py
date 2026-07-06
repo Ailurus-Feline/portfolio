@@ -113,6 +113,8 @@ V3_OPT_FIGURES_DIR = V3_OPT_DIR / "figures"
 V3_DAILY_CSV = V3_CHAMPION_DIR / "backtest_daily.csv"
 V3_SUMMARY_CSV = V3_CHAMPION_DIR / "performance_summary.csv"
 V3_EQUITY_FIGURE = V3_CHAMPION_DIR / "figures" / "equity_curve.png"
+V3_PNL_FIGURE = V3_CHAMPION_DIR / "figures" / "pnl_vs_benchmark.png"
+FINAL_PNL_FIGURE = OUTPUT_DIR / "final_pnl_vs_benchmark.png"
 V3_ALPHAS_DIR = V3_EXPLORATORY_ALPHAS_DIR
 V3_MASTER_RESULTS = V3_MATRIX_RESULTS
 

@@ -193,3 +193,51 @@ def plot_equity_curve(
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
+
+
+def plot_pnl_vs_benchmark(
+    daily: pd.DataFrame,
+    output_path: Path,
+    title: str = "Final Strategy PnL vs Buy & Hold (801080)",
+    initial_capital: float | None = None,
+) -> None:
+    """Plot strategy NAV against buy-and-hold benchmark NAV."""
+    plot_df = daily.dropna(subset=["strategy_nav", "benchmark_nav"]).copy()
+    if plot_df.empty:
+        raise ValueError("No rows available for PnL plotting.")
+
+    if initial_capital is None:
+        initial_capital = float(plot_df["strategy_nav"].iloc[0])
+
+    strategy_nav = plot_df["strategy_nav"] / initial_capital
+    benchmark_nav = plot_df["benchmark_nav"] / initial_capital
+    strategy_return = float(strategy_nav.iloc[-1] - 1.0)
+    benchmark_return = float(benchmark_nav.iloc[-1] - 1.0)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(
+        plot_df["date"],
+        strategy_nav,
+        color="#1f77b4",
+        linewidth=1.8,
+        label=f"Strategy ({strategy_return * 100:+.1f}%)",
+    )
+    ax.plot(
+        plot_df["date"],
+        benchmark_nav,
+        color="#777777",
+        linewidth=1.3,
+        linestyle="--",
+        label=f"Buy & hold ({benchmark_return * 100:+.1f}%)",
+    )
+    ax.axhline(1.0, color="gray", linewidth=0.8, linestyle=":")
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Net asset value (initial = 1.0)")
+    ax.legend(loc="upper left")
+    ax.grid(True, alpha=0.25)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)

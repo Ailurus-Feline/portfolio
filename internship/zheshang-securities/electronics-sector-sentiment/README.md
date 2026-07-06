@@ -38,7 +38,7 @@ Raw data is not included. Required inputs under `data/raw/`: `index_801080.csv`,
 | **Execution** | T-day close signal → T+1 position |
 | **Direction** | Long-only on index 801080 |
 
-**Backtest (with costs):** full sample +1297% (−60% max DD, 23 trades); final 20% holdout +271% (+28.5% vs B&H).
+**Backtest (with costs):** full sample +1297% (−60% max DD, 23 trades); final 20% holdout +271% (+28.5% vs B&H). PnL chart: `output/final_pnl_vs_benchmark.png`.
 
 v4 tested equal-weight, IC-weighted, Ridge, and Decision Tree combinations — **none beat this strategy**. Artifacts: `output/v3/champion/`.
 
@@ -92,7 +92,9 @@ output/
 │   │   ├── backtest_daily.csv
 │   │   ├── performance_summary.csv
 │   │   ├── report.txt
-│   │   └── figures/equity_curve.png
+│   │   └── figures/
+│   │       ├── equity_curve.png     # Cumulative return (%)
+│   │       └── pnl_vs_benchmark.png # NAV vs buy & hold
 │   ├── exploratory/                 # 6 alphas × 3 rules (default ±1)
 │   │   ├── matrix_results.csv
 │   │   └── alphas/{alpha}/{rule}/
