@@ -70,3 +70,74 @@ WEIGHT_PRESETS: dict[str, tuple[float, float, float]] = {
 
 TOP_K_TRAIN = 5
 GRID_TOP_N = 10
+
+# v2 selected EMA (matches best_config.yaml default).
+V2_BEST_EMA = 60
+
+# v3 strategy thresholds.
+HYSTERESIS_BUY_Z = -1.2
+HYSTERESIS_SELL_Z = 1.0
+CONTINUOUS_COLD_Z = -1.0
+CONTINUOUS_HOT_Z = 1.0
+INDEX_MOMENTUM_LOOKBACK = 60
+
+# v3 champion (grid search winner, beats buy & hold on full sample + final holdout).
+V3_CHAMPION_ALPHA = "advance_decline"
+V3_CHAMPION_EMA = 60
+V3_CHAMPION_RULE = "overcooled_entry"
+V3_CHAMPION_BUY_Z = -1.0
+V3_CHAMPION_SELL_Z = 1.5
+
+# v3 backtest outputs (see output/v3/final_report.txt for layout).
+V3_OUTPUT_DIR = OUTPUT_DIR / "v3"
+V3_REPORT = V3_OUTPUT_DIR / "final_report.txt"
+V3_BEST_CONFIG = V3_OUTPUT_DIR / "best_config.yaml"
+V3_CERTIFIED_ALPHAS = V3_OUTPUT_DIR / "certified_alphas.yaml"
+
+V3_CHAMPION_DIR = V3_OUTPUT_DIR / "champion"
+V3_EXPLORATORY_DIR = V3_OUTPUT_DIR / "exploratory"
+V3_EXPLORATORY_ALPHAS_DIR = V3_EXPLORATORY_DIR / "alphas"
+V3_MATRIX_RESULTS = V3_EXPLORATORY_DIR / "matrix_results.csv"
+
+BACKTEST_CONFIG_FILE = RAW_DATA_DIR / "backtest_config.yaml"
+V3_SENTIMENT_INPUT = V2_BEST_SENTIMENT_CSV
+
+# v3 optimization grid search.
+V3_OPT_DIR = V3_OUTPUT_DIR / "optimization"
+V3_OPT_GRID_RESULTS = V3_OPT_DIR / "grid_results.csv"
+V3_OPT_TOP_CONFIGS = V3_OPT_DIR / "top_configs.csv"
+V3_OPT_REPORT = V3_OPT_DIR / "report.txt"
+V3_OPT_FIGURES_DIR = V3_OPT_DIR / "figures"
+
+# Convenience aliases (champion is the canonical v3 strategy).
+V3_DAILY_CSV = V3_CHAMPION_DIR / "backtest_daily.csv"
+V3_SUMMARY_CSV = V3_CHAMPION_DIR / "performance_summary.csv"
+V3_EQUITY_FIGURE = V3_CHAMPION_DIR / "figures" / "equity_curve.png"
+V3_ALPHAS_DIR = V3_EXPLORATORY_ALPHAS_DIR
+V3_MASTER_RESULTS = V3_MATRIX_RESULTS
+
+FINAL_STRATEGY_FILE = PROJECT_ROOT / "FINAL_STRATEGY.yaml"
+
+# v4 alpha combination.
+V4_OUTPUT_DIR = OUTPUT_DIR / "v4"
+V4_ALPHA_MATRIX = V4_OUTPUT_DIR / "alpha_matrix.csv"
+V4_COMBINATION_RESULTS = V4_OUTPUT_DIR / "combination_results.csv"
+V4_BEST_CONFIG = V4_OUTPUT_DIR / "best_config.yaml"
+V4_REPORT = V4_OUTPUT_DIR / "final_report.txt"
+V4_METHODS_DIR = V4_OUTPUT_DIR / "methods"
+V4_SENSITIVITY_DIR = V4_OUTPUT_DIR / "sensitivity"
+V4_SENSITIVITY_RESULTS = V4_SENSITIVITY_DIR / "grid_results.csv"
+
+V4_ALPHA_NAMES: tuple[str, ...] = (
+    "advance_decline",
+    "positive_return",
+    "sentiment_composite",
+    "index_momentum",
+)
+
+V4_BUY_Z_GRID = (-1.2, -1.0, -0.8)
+V4_SELL_Z_GRID = (1.2, 1.5, 2.0)
+V4_RIDGE_LAMBDAS = (0.1, 1.0, 10.0, 100.0)
+V4_IC_HORIZONS = (20, 60)
+V4_TREE_MAX_DEPTHS = (2, 3, 4)
+V4_TREE_MIN_SAMPLES_LEAF = (50, 100, 200)

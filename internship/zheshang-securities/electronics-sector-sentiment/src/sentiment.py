@@ -67,6 +67,18 @@ def prepare_percentile_features(indicators: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def build_signal_z(raw: pd.Series, ema_span: int) -> pd.Series:
+    """Percentile-rank, EMA-smooth, and expanding z-score a raw indicator."""
+    series = raw.copy()
+    if series.name is None:
+        series.name = "signal"
+    pct = expanding_percentile_rank(series)
+    slow = pct.ewm(span=ema_span, adjust=False).mean()
+    expanding_mean = slow.expanding(min_periods=2).mean()
+    expanding_std = slow.expanding(min_periods=2).std()
+    return (slow - expanding_mean) / expanding_std
+
+
 def assign_regime_labels(z: pd.Series) -> pd.Series:
     """Map z-scores to overheated, overcooled, or neutral labels."""
     regime = pd.Series(pd.NA, index=z.index, dtype="object")

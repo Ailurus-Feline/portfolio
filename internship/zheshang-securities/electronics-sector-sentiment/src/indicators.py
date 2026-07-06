@@ -46,6 +46,15 @@ def positive_return_ratio(close: pd.DataFrame, valid: pd.DataFrame) -> pd.Series
     return _safe_ratio(is_positive.sum(axis=1), n_valid)
 
 
+def advance_decline_ratio(close: pd.DataFrame, valid: pd.DataFrame) -> pd.Series:
+    """(Advancers - decliners) / valid stocks using 1-day returns."""
+    ret_1 = close.pct_change()
+    is_up = (ret_1 > 0) & valid
+    is_down = (ret_1 < 0) & valid
+    n_valid = valid.sum(axis=1)
+    return _safe_ratio(is_up.sum(axis=1) - is_down.sum(axis=1), n_valid)
+
+
 def compute_breadth_indicators(
     close_panel: pd.DataFrame,
     valid_panel: pd.DataFrame,
@@ -55,5 +64,6 @@ def compute_breadth_indicators(
     indicators["new_high_low_net"] = new_high_low_net_ratio(close_panel, valid_panel)
     indicators["above_ma"] = above_ma_ratio(close_panel, valid_panel)
     indicators["positive_return"] = positive_return_ratio(close_panel, valid_panel)
+    indicators["advance_decline"] = advance_decline_ratio(close_panel, valid_panel)
     indicators["valid_stocks"] = valid_panel.sum(axis=1)
     return indicators

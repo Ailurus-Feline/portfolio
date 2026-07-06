@@ -13,11 +13,15 @@ data/raw/*.xlsx
 data/processed/*
 !data/processed/.gitkeep
 
-# Outputs (regenerable)
+# Outputs (regenerable; directory structure kept via .gitkeep)
 output/v1/*
 !output/v1/.gitkeep
 output/v2/*
 !output/v2/.gitkeep
+output/v3/*
+!output/v3/.gitkeep
+output/v4/*
+!output/v4/.gitkeep
 
 # OS / IDE
 .DS_Store

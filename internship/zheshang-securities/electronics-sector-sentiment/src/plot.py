@@ -154,3 +154,42 @@ def plot_v1_v2_zscore_comparison(
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
+
+
+def plot_equity_curve(
+    daily: pd.DataFrame,
+    output_path: Path,
+    title: str = "v3 Cumulative Return — Strategy vs Buy & Hold",
+) -> None:
+    """Plot cumulative strategy return vs buy-and-hold benchmark."""
+    plot_df = daily.dropna(subset=["strategy_cum_return", "benchmark_cum_return"]).copy()
+    if plot_df.empty:
+        raise ValueError("No rows available for equity curve plotting.")
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(
+        plot_df["date"],
+        plot_df["strategy_cum_return"] * 100.0,
+        color="#1f77b4",
+        linewidth=1.6,
+        label="Strategy",
+    )
+    ax.plot(
+        plot_df["date"],
+        plot_df["benchmark_cum_return"] * 100.0,
+        color="#777777",
+        linewidth=1.2,
+        linestyle="--",
+        label="Buy & hold (index)",
+    )
+    ax.axhline(0.0, color="gray", linewidth=0.8)
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Cumulative return (%)")
+    ax.legend(loc="upper left")
+    ax.grid(True, alpha=0.25)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)

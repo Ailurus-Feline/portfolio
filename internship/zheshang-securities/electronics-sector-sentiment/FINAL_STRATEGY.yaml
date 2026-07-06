@@ -1,0 +1,46 @@
+# Deployable trading strategy — locked after v3 optimization + v4 combination review
+# Sector: Shenwan Electronics (801080) | Long-only | T-day signal -> T+1 position
+
+status: final
+source_version: v3
+v4_verdict: no combination method beats this strategy on full sample and final holdout
+
+signal:
+  name: advance_decline
+  description: Daily breadth — (advancers - decliners) / valid constituents
+  construction:
+    - Raw ratio from constituent close prices (1-day up/down)
+    - Expanding historical percentile (no look-ahead)
+    - EMA smooth span: 60
+    - Expanding z-score of EMA-smoothed percentile
+
+rules:
+  direction: long_only
+  initial_position: 0.0
+  buy_when: signal_z < -1.0    # overcooled — enter 100% long
+  sell_when: signal_z > 1.5    # overheated — exit to cash
+  between: maintain previous position
+  execution: close on day t sets position held on day t+1
+
+benchmark: buy_and_hold index 801080
+
+costs: data/raw/backtest_config.yaml
+  initial_capital: 1000000
+  commission_rate: 0.0002      # 2 bps per side
+  stamp_tax_rate: 0.001        # 0.1% on sells
+
+backtest_results:
+  full_sample:
+    total_return: 12.97        # +1297%
+    excess_vs_benchmark: 7.07  # +707% vs buy & hold (~591%)
+    max_drawdown: -0.60
+    trades: 23
+    avg_position: 0.81
+  final_holdout_20pct:
+    total_return: 2.71         # +271%
+    excess_vs_benchmark: 0.28  # +28.5%
+
+artifacts:
+  config: output/v3/best_config.yaml
+  daily: output/v3/champion/backtest_daily.csv
+  equity_curve: output/v3/champion/figures/equity_curve.png
