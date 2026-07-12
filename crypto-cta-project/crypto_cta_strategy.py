@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import ccxt
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.tree import DecisionTreeRegressor
 
 
 pd.set_option("display.max_columns", 20)
@@ -16,16 +18,36 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_CLEAN = PROJECT_ROOT / "data" / "clean"
 RESULTS = PROJECT_ROOT / "results"
-FIGURES = RESULTS / "figures"
-CSV_OUT = RESULTS / "csv"
-FACTOR_DATA_OUT = CSV_OUT
-FACTOR_RESULTS_OUT = CSV_OUT
-FACTOR_FIGURES_OUT = FIGURES
-for path_obj in [DATA_RAW, DATA_CLEAN, RESULTS, FIGURES, CSV_OUT]:
+CLASS1_CSV = RESULTS / "class1_trend" / "csv"
+CLASS1_FIGURES = RESULTS / "class1_trend" / "figures"
+CLASS2_CSV = RESULTS / "class2_factor" / "csv"
+CLASS2_FIGURES = RESULTS / "class2_factor" / "figures"
+CLASS3_CSV = RESULTS / "class3_combo" / "csv"
+CLASS3_BACKTESTS = CLASS3_CSV / "backtests"
+CLASS3_FIGURES = RESULTS / "class3_combo" / "figures"
+CSV_OUT = CLASS1_CSV
+FIGURES = CLASS1_FIGURES
+FACTOR_DATA_OUT = CLASS2_CSV
+FACTOR_RESULTS_OUT = CLASS2_CSV
+FACTOR_FIGURES_OUT = CLASS2_FIGURES
+COMBO_RESULTS_OUT = CLASS3_CSV
+COMBO_BACKTESTS_OUT = CLASS3_BACKTESTS
+COMBO_FIGURES_OUT = CLASS3_FIGURES
+for path_obj in [
+    DATA_RAW,
+    DATA_CLEAN,
+    CLASS1_CSV,
+    CLASS1_FIGURES,
+    CLASS2_CSV,
+    CLASS2_FIGURES,
+    CLASS3_CSV,
+    CLASS3_BACKTESTS,
+    CLASS3_FIGURES,
+]:
     path_obj.mkdir(parents=True, exist_ok=True)
 
-# Baseline configuration from notebook
-EXCHANGE_ID = "binance"  # If Binance is not accessible, try "okx" or "bybit".
+# Baseline configuration
+EXCHANGE_ID = "binance"
 SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 TIMEFRAME = "1h"
 SINCE = "2020-01-01T00:00:00Z"
@@ -36,6 +58,20 @@ TOP_FACTOR_COUNTS = [3, 5]
 MAX_TOP_FACTOR_ANALYSIS = max(TOP_FACTOR_COUNTS)
 HOURS_PER_DAY = 24
 HOURS_PER_WEEK = 24 * 7
+
+COMBO_HORIZONS: dict[str, dict[str, int]] = {
+    "1h": {"bars": 1, "periods_per_year": 24 * 365},
+    "1d": {"bars": HOURS_PER_DAY, "periods_per_year": 365},
+    "1w": {"bars": HOURS_PER_WEEK, "periods_per_year": 52},
+}
+TRAIN_RATIO = 0.6
+VALID_RATIO = 0.2
+COMBO_TOP_FACTOR_COUNT = 5
+COMBO_RIDGE_ALPHA = 20.0
+COMBO_DEFAULT_QUANTILE = 0.90
+COMBO_SENSITIVITY_QUANTILES = [0.60, 0.65, 0.70, 0.75, 0.80]
+COMBO_SENSITIVITY_FEES_BPS = [2.0, 5.0, 10.0]
+COMBO_LOOKBACK_WINDOWS = [12 * HOURS_PER_DAY, 24 * HOURS_PER_DAY, 48 * HOURS_PER_DAY]
 
 
 def make_exchange(exchange_id: str = EXCHANGE_ID):
@@ -298,12 +334,11 @@ def dmi_adx(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14)
 
 
 def build_alpha_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    """Build factor features and future-return target on cleaned OHLCV."""
     out = df.copy()
     out["ret_1h"] = out["close"].pct_change()
     out["future_ret_1h"] = out["close"].shift(-1) / out["close"] - 1
 
-    # Momentum (weekly windows mapped to hourly bars).
+    # Momentum.
     out["factor_mom_4w"] = momentum(out["close"], 4 * HOURS_PER_WEEK)
     out["factor_mom_12w"] = momentum(out["close"], 12 * HOURS_PER_WEEK)
     out["factor_mom_26w"] = momentum(out["close"], 26 * HOURS_PER_WEEK)
@@ -351,6 +386,7 @@ def calc_ic_table(data: pd.DataFrame, factors: list[str], target: str = "future_
     for factor in factors:
         tmp = data[[factor, target]].dropna()
         pearson = tmp[factor].corr(tmp[target], method="pearson")
+        # Clip extreme factor values before correlating — dampens outlier-driven IC
         clip_pearson = (
             tmp[factor]
             .clip(tmp[factor].quantile(0.05), tmp[factor].quantile(0.95))
@@ -392,8 +428,9 @@ def quantile_monetization(
     direction: int = 1,
 ) -> pd.DataFrame:
     out = data[["datetime", factor, target]].copy()
-    out[factor] = out[factor] * direction
+    out[factor] = out[factor] * direction  # flip if Class-2 IC was negative
 
+    # Thresholds use only past factor values (shift + rolling quantile)
     hist_factor = out[factor].shift(1)
     out["q_high"] = hist_factor.rolling(window, min_periods=window // 6).quantile(q_high)
     out["q_low"] = hist_factor.rolling(window, min_periods=window // 6).quantile(q_low)
@@ -402,7 +439,7 @@ def quantile_monetization(
     out.loc[out[factor] > out["q_high"], "signal"] = 1
     out.loc[out[factor] < out["q_low"], "signal"] = -1
 
-    out["position"] = out["signal"]
+    out["position"] = out["signal"]  # position at t earns target return over t -> t+1
     out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
     out["fee"] = out["turnover"] * fee_bps / 10_000
     out["pnl"] = out["position"] * out[target] - out["fee"]
@@ -432,13 +469,13 @@ def backtest_metrics(bt: pd.DataFrame, periods_per_year: int = 24 * 365) -> pd.S
 
 
 def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame | pd.Series]:
-    """Run factor workflow and persist outputs."""
     btc_df = clean_data["BTC/USDT"].copy()
     alpha_df = build_alpha_dataset(btc_df)
     factor_cols = [col for col in alpha_df.columns if col.startswith("factor_")]
 
     ic_table = calc_ic_table(alpha_df, factor_cols)
 
+    # Rank by |clipped IC| with a minimum sample-size guard
     min_obs = max(1000, int(len(alpha_df) * 0.2))
     ranked = ic_table[(ic_table["n_obs"] >= min_obs)].copy()
     ranked["score"] = ranked["clipped_ic"].abs()
@@ -457,7 +494,7 @@ def run_factor_research_workflow(clean_data: dict[str, pd.DataFrame]) -> dict[st
     top_count = min(MAX_TOP_FACTOR_ANALYSIS, len(ranked))
     top_factors = ranked.head(top_count).copy()
     top_factors.insert(0, "rank", range(1, len(top_factors) + 1))
-    top_factors["direction"] = np.where(top_factors["pearson_ic"] < 0, -1, 1)
+    top_factors["direction"] = np.where(top_factors["pearson_ic"] < 0, -1, 1)  # feed into Class 3 combo matrix
 
     selected_factor = str(top_factors.iloc[0]["factor"])
     selected_ic = float(top_factors.iloc[0]["pearson_ic"])
@@ -780,19 +817,18 @@ def data_quality_report(df: pd.DataFrame, timeframe: str = TIMEFRAME) -> dict[st
 
 
 def add_ma_signal(df: pd.DataFrame, fast: int = 20, slow: int = 60) -> pd.DataFrame:
-    """Build long-short MA signal with one-bar execution lag."""
+    # Class 1 trend baseline: signal from MA cross, execute with one-bar lag
     out = df.copy()
     out["ret"] = out["close"].pct_change()
     out[f"ma_{fast}"] = out["close"].rolling(fast).mean()
     out[f"ma_{slow}"] = out["close"].rolling(slow).mean()
     out["signal"] = np.where(out[f"ma_{fast}"] > out[f"ma_{slow}"], 1, -1)
     out.loc[out[f"ma_{slow}"].isna(), "signal"] = 0
-    out["position"] = out["signal"].shift(1).fillna(0)
+    out["position"] = out["signal"].shift(1).fillna(0)  # anti-look-ahead
     return out
 
 
 def backtest_signal(df: pd.DataFrame, fee_bps: float = 2.0) -> pd.DataFrame:
-    """Run vectorized backtest with turnover-based costs."""
     out = df.copy()
     fee_rate = fee_bps / 10_000
     out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
@@ -997,17 +1033,587 @@ def run_strategy_scenarios(clean_data: dict[str, pd.DataFrame]) -> dict[str, pd.
     return outputs
 
 
+def add_horizon_targets(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "future_ret_1h" not in out.columns:
+        out["future_ret_1h"] = out["close"].shift(-1) / out["close"] - 1
+    out["future_ret_1d"] = out["close"].shift(-HOURS_PER_DAY) / out["close"] - 1
+    out["future_ret_1w"] = out["close"].shift(-HOURS_PER_WEEK) / out["close"] - 1
+    return out
+
+
+def load_selected_factors(
+    top_n: int = COMBO_TOP_FACTOR_COUNT,
+    factor_results: dict[str, pd.DataFrame | pd.Series] | None = None,
+) -> pd.DataFrame:
+    if factor_results and "top_factors" in factor_results:
+        top_factors = factor_results["top_factors"]
+        if isinstance(top_factors, pd.DataFrame):
+            return top_factors.head(top_n).copy()
+
+    for path in [CLASS2_CSV / f"factor_top{top_n}_factors.csv", CLASS2_CSV / "factor_top_factors.csv"]:
+        if path.exists():
+            return pd.read_csv(path).head(top_n).copy()
+
+    raise RuntimeError("No Class 2 factor ranking found. Run factor research workflow first.")
+
+
+def prepare_directed_alpha_matrix(
+    alpha_df: pd.DataFrame,
+    selected_factors: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[str]]:
+    out = alpha_df.copy()
+    combo_cols: list[str] = []
+    for row in selected_factors.itertuples(index=False):
+        factor_name = str(row.factor)
+        direction = int(getattr(row, "direction", 1))
+        combo_name = f"combo_{factor_name}"
+        out[combo_name] = out[factor_name] * direction
+        combo_cols.append(combo_name)
+    return out, combo_cols
+
+
+def time_split_index(
+    index: pd.Index,
+    train_ratio: float = TRAIN_RATIO,
+    valid_ratio: float = VALID_RATIO,
+) -> tuple[pd.Index, pd.Index, pd.Index]:
+    n = len(index)
+    train_end = int(n * train_ratio)
+    valid_end = int(n * (train_ratio + valid_ratio))
+    return index[:train_end], index[train_end:valid_end], index[valid_end:]
+
+
+def prepare_model_data(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    target_col: str = "future_ret_1h",
+    datetime_col: str = "datetime",
+) -> tuple[pd.DataFrame, pd.Index, pd.Index, pd.Index]:
+    cols = feature_cols + [target_col, "ret_1h"]
+    if datetime_col in df.columns:
+        data = df[[datetime_col, *cols]].replace([np.inf, -np.inf], np.nan).dropna().copy()
+        data = data.set_index(datetime_col)
+    else:
+        data = df[cols].replace([np.inf, -np.inf], np.nan).dropna().copy()
+    train_idx, valid_idx, test_idx = time_split_index(data.index)
+    return data, train_idx, valid_idx, test_idx
+
+
+def safe_standardize_by_train(data: pd.DataFrame, cols: list[str], train_idx: pd.Index) -> pd.DataFrame:
+    train = data.loc[train_idx, cols]
+    mu = train.mean()
+    sd = train.std().replace(0, np.nan)
+    return (data[cols] - mu) / sd
+
+
+def equal_weight_signal(data: pd.DataFrame, feature_cols: list[str], train_idx: pd.Index) -> pd.Series:
+    standardized = safe_standardize_by_train(data, feature_cols, train_idx)
+    return standardized.mean(axis=1).rename("sig_equal_weight")
+
+
+def ic_weight_signal(
+    data: pd.DataFrame,
+    feature_cols: list[str],
+    target_col: str,
+    train_idx: pd.Index,
+    long_only_weight: bool = False,
+) -> tuple[pd.Series, pd.Series]:
+    standardized = safe_standardize_by_train(data, feature_cols, train_idx)
+
+    ics: dict[str, float] = {}
+    for col in feature_cols:
+        ics[col] = data.loc[train_idx, col].corr(data.loc[train_idx, target_col])
+    weights = pd.Series(ics).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    if long_only_weight:
+        weights = weights.clip(lower=0.0)
+    if weights.abs().sum() == 0:
+        weights[:] = 1.0
+    weights = weights / weights.abs().sum()
+    signal = standardized.mul(weights, axis=1).sum(axis=1)
+    return signal.rename("sig_ic_weight"), weights.sort_values(ascending=False)
+
+
+def model_signal(
+    data: pd.DataFrame,
+    feature_cols: list[str],
+    target_col: str,
+    train_idx: pd.Index,
+    model_type: str = "ridge",
+    alpha: float = COMBO_RIDGE_ALPHA,
+) -> tuple[pd.Series, object]:
+    standardized = safe_standardize_by_train(data, feature_cols, train_idx)
+    y = data[target_col]
+    x_train = standardized.loc[train_idx]
+    y_train = y.loc[train_idx]
+
+    if model_type == "linear":
+        model: LinearRegression | Ridge | DecisionTreeRegressor = LinearRegression(fit_intercept=False)
+    elif model_type == "ridge":
+        model = Ridge(alpha=alpha)
+    elif model_type == "tree":
+        model = DecisionTreeRegressor(max_depth=3, min_samples_leaf=100, random_state=42)
+    else:
+        raise ValueError("model_type should be linear, ridge, or tree")
+
+    model.fit(x_train, y_train)
+    pred = pd.Series(model.predict(standardized), index=standardized.index, name=f"sig_{model_type}")
+    return pred, model
+
+
+def signal_to_position(
+    signal: pd.Series,
+    train_idx: pd.Index,
+    method: str = "quantile",
+    q: float = COMBO_DEFAULT_QUANTILE,
+    lookback_window: int | None = None,
+) -> pd.Series:
+    clean_signal = signal.replace([np.inf, -np.inf], np.nan)
+    position = pd.Series(0.0, index=signal.index)
+
+    if method == "quantile":
+        if lookback_window is None:
+            train_signal = clean_signal.loc[train_idx.intersection(clean_signal.index)]
+            hi = train_signal.quantile(q)
+            lo = train_signal.quantile(1 - q)
+            position[clean_signal > hi] = 1.0
+            position[clean_signal < lo] = -1.0
+        else:
+            hist_signal = clean_signal.shift(1)
+            min_periods = max(5, lookback_window // 4)
+            hi = hist_signal.rolling(lookback_window, min_periods=min_periods).quantile(q)
+            lo = hist_signal.rolling(lookback_window, min_periods=min_periods).quantile(1 - q)
+            position[clean_signal > hi] = 1.0
+            position[clean_signal < lo] = -1.0
+    else:
+        raise ValueError("method should be quantile")
+    return position.fillna(0.0)
+
+
+def calc_signal_metrics(
+    pnl: pd.Series,
+    position: pd.Series | None = None,
+    signal: pd.Series | None = None,
+    returns: pd.Series | None = None,
+    periods_per_year: int = 24 * 365,
+) -> pd.Series:
+    pnl = pnl.dropna()
+    ann_return = pnl.mean() * periods_per_year
+    ann_vol = pnl.std(ddof=1) * np.sqrt(periods_per_year) if len(pnl) > 1 else np.nan
+    sharpe = ann_return / ann_vol if ann_vol not in (0, np.nan) and pd.notna(ann_vol) else np.nan
+    equity = 1 + pnl.cumsum()
+    metrics: dict[str, float] = {
+        "ann_return": float(ann_return) if pd.notna(ann_return) else np.nan,
+        "ann_vol": float(ann_vol) if pd.notna(ann_vol) else np.nan,
+        "sharpe": float(sharpe) if pd.notna(sharpe) else np.nan,
+        "max_drawdown": max_drawdown(equity),
+        "total_return": float(equity.iloc[-1] - 1) if len(equity) else np.nan,
+        "hit_rate": float((pnl > 0).mean()) if len(pnl) else np.nan,
+    }
+    if position is not None:
+        metrics["avg_abs_position"] = float(position.abs().mean())
+        metrics["turnover_per_bar"] = float(position.diff().abs().fillna(position.abs()).mean())
+    if signal is not None and returns is not None:
+        aligned = pd.concat([signal.rename("signal"), returns.rename("ret")], axis=1).dropna()
+        if len(aligned) > 1:
+            metrics["ic"] = float(aligned["signal"].corr(aligned["ret"]))
+        else:
+            metrics["ic"] = np.nan
+    return pd.Series(metrics)
+
+
+def signal_backtest(
+    data: pd.DataFrame,
+    signal: pd.Series,
+    train_idx: pd.Index,
+    method: str = "quantile",
+    q: float = COMBO_DEFAULT_QUANTILE,
+    fee_bps: float = 2.0,
+    return_col: str = "ret_1h",
+    lookback_window: int | None = None,
+) -> pd.DataFrame:
+    aligned = pd.concat([data[return_col].rename("ret"), signal.rename("signal")], axis=1).dropna()
+    position = signal_to_position(
+        aligned["signal"],
+        train_idx,
+        method=method,
+        q=q,
+        lookback_window=lookback_window,
+    ).reindex(aligned.index).fillna(0.0)
+    turnover = position.diff().abs().fillna(position.abs())
+    fee = turnover * fee_bps / 10_000
+    pnl = position.shift(1).fillna(0.0) * aligned["ret"] - fee
+    return pd.DataFrame(
+        {
+            "ret": aligned["ret"],
+            "signal": aligned["signal"],
+            "position": position,
+            "turnover": turnover,
+            "fee": fee,
+            "pnl": pnl,
+        }
+    )
+
+
+def metrics_by_period(
+    result: pd.DataFrame,
+    train_idx: pd.Index,
+    valid_idx: pd.Index,
+    test_idx: pd.Index,
+    periods_per_year: int = 24 * 365,
+) -> pd.DataFrame:
+    rows: dict[str, pd.Series] = {}
+    for name, idx in {"train": train_idx, "valid": valid_idx, "test": test_idx}.items():
+        subset = result.loc[result.index.intersection(idx)]
+        rows[name] = calc_signal_metrics(
+            subset["pnl"],
+            subset["position"],
+            subset["signal"],
+            subset["ret"],
+            periods_per_year=periods_per_year,
+        )
+    return pd.DataFrame(rows).T
+
+
+def _calendar_period_returns(pnl: pd.Series, freq: str) -> pd.Series:
+    clean = pnl.dropna()
+    if clean.empty:
+        return pd.Series(dtype=float)
+    if not isinstance(clean.index, pd.DatetimeIndex):
+        clean.index = pd.to_datetime(clean.index, utc=True)
+    grouped = clean.groupby(pd.Grouper(freq=freq))
+    return grouped.apply(lambda s: (1 + s).prod() - 1).dropna()
+
+
+def calendar_returns_table(
+    result: pd.DataFrame,
+    train_idx: pd.Index,
+    valid_idx: pd.Index,
+    test_idx: pd.Index,
+    method: str,
+    horizon: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    detail_rows: list[dict[str, object]] = []
+    summary_rows: list[dict[str, float | int | str]] = []
+    freq_map = {"month": "ME", "quarter": "QE", "year": "YE"}
+
+    for split_name, idx in {"train": train_idx, "valid": valid_idx, "test": test_idx}.items():
+        subset = result.loc[result.index.intersection(idx)]
+        if subset.empty:
+            continue
+        for calendar_name, freq in freq_map.items():
+            period_returns = _calendar_period_returns(subset["pnl"], freq)
+            for period_end, period_ret in period_returns.items():
+                detail_rows.append(
+                    {
+                        "method": method,
+                        "horizon": horizon,
+                        "split": split_name,
+                        "calendar": calendar_name,
+                        "period_end": period_end,
+                        "period_return": float(period_ret),
+                    }
+                )
+            if len(period_returns) > 0:
+                summary_rows.append(
+                    {
+                        "method": method,
+                        "horizon": horizon,
+                        "split": split_name,
+                        "calendar": calendar_name,
+                        "n_periods": len(period_returns),
+                        "mean_period_return": float(period_returns.mean()),
+                        "std_period_return": float(period_returns.std(ddof=1)) if len(period_returns) > 1 else np.nan,
+                        "win_rate": float((period_returns > 0).mean()),
+                        "total_return": float((1 + period_returns).prod() - 1),
+                    }
+                )
+
+    return pd.DataFrame(detail_rows), pd.DataFrame(summary_rows)
+
+
+def build_combination_signals(
+    data: pd.DataFrame,
+    feature_cols: list[str],
+    target_col: str,
+    train_idx: pd.Index,
+) -> tuple[dict[str, pd.Series], pd.Series]:
+    signals: dict[str, pd.Series] = {
+        "equal_weight": equal_weight_signal(data, feature_cols, train_idx),
+    }
+    ic_signal, ic_weights = ic_weight_signal(data, feature_cols, target_col, train_idx)
+    signals["ic_weight"] = ic_signal
+
+    for model_type in ["linear", "ridge", "tree"]:
+        pred, _ = model_signal(
+            data,
+            feature_cols,
+            target_col,
+            train_idx,
+            model_type=model_type,
+            alpha=COMBO_RIDGE_ALPHA,
+        )
+        signals[model_type] = pred
+
+    return signals, ic_weights
+
+
+def combination_sensitivity_test(
+    data: pd.DataFrame,
+    signal: pd.Series,
+    train_idx: pd.Index,
+    valid_idx: pd.Index,
+    test_idx: pd.Index,
+    method: str = "",
+    qs: list[float] | tuple[float, ...] = tuple(COMBO_SENSITIVITY_QUANTILES),
+    fees_bps: list[float] | tuple[float, ...] = tuple(COMBO_SENSITIVITY_FEES_BPS),
+    lookbacks: list[int | None] | tuple[int | None, ...] = (None, *COMBO_LOOKBACK_WINDOWS),
+    periods_per_year: int = 24 * 365,
+) -> pd.DataFrame:
+    rows: list[dict[str, float | int | str]] = []
+    for fee_bps in fees_bps:
+        for q in qs:
+            for lookback in lookbacks:
+                bt = signal_backtest(
+                    data,
+                    signal,
+                    train_idx,
+                    method="quantile",
+                    q=q,
+                    fee_bps=fee_bps,
+                    lookback_window=lookback,
+                )
+                for period_name, idx in {"train": train_idx, "valid": valid_idx, "test": test_idx}.items():
+                    subset = bt.loc[bt.index.intersection(idx)]
+                    metrics = calc_signal_metrics(
+                        subset["pnl"],
+                        subset["position"],
+                        subset["signal"],
+                        subset["ret"],
+                        periods_per_year=periods_per_year,
+                    )
+                    rows.append(
+                        {
+                            "method": method,
+                            "lookback": -1 if lookback is None else lookback,
+                            "q": q,
+                            "fee_bps": fee_bps,
+                            "period": period_name,
+                            **{k: float(v) if pd.notna(v) else np.nan for k, v in metrics.to_dict().items()},
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def _plot_combo_equity_curves(
+    bt_results: dict[str, pd.DataFrame],
+    title: str,
+    save_path: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for name, result in bt_results.items():
+        equity = (1 + result["pnl"].fillna(0)).cumprod()
+        ax.plot(result.index, equity.values, label=name)
+    ax.set_title(title)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+
+
+def _plot_combo_sensitivity_heatmap(
+    sensitivity: pd.DataFrame,
+    period: str,
+    save_path: Path,
+    lookback: int = -1,
+) -> None:
+    subset = sensitivity[(sensitivity["period"] == period) & (sensitivity["lookback"] == lookback)]
+    if subset.empty:
+        subset = sensitivity[sensitivity["period"] == period]
+        if subset.empty:
+            return
+        subset = subset[subset["lookback"] == subset["lookback"].iloc[0]]
+    pivot = subset.pivot(index="q", columns="fee_bps", values="sharpe")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    im = ax.imshow(pivot.values, aspect="auto")
+    ax.set_xticks(range(len(pivot.columns)))
+    ax.set_xticklabels(pivot.columns)
+    ax.set_yticks(range(len(pivot.index)))
+    ax.set_yticklabels(pivot.index)
+    ax.set_xlabel("fee_bps")
+    ax.set_ylabel("threshold quantile")
+    ax.set_title(f"{period.title()} Sharpe sensitivity")
+    fig.colorbar(im, ax=ax, label="Sharpe")
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+
+
+def run_model_combination_workflow(
+    clean_data: dict[str, pd.DataFrame],
+    factor_results: dict[str, pd.DataFrame | pd.Series] | None = None,
+    symbol: str = "BTC/USDT",
+) -> dict[str, object]:
+    alpha_df = build_alpha_dataset(clean_data[symbol].copy())
+    alpha_df = add_horizon_targets(alpha_df)
+    selected_factors = load_selected_factors(COMBO_TOP_FACTOR_COUNT, factor_results)
+    alpha_df, combo_cols = prepare_directed_alpha_matrix(alpha_df, selected_factors)
+
+    all_period_metrics: list[pd.DataFrame] = []
+    all_sensitivity: list[pd.DataFrame] = []
+    all_calendar_detail: list[pd.DataFrame] = []
+    all_calendar_summary: list[pd.DataFrame] = []
+    all_ic_weights: list[dict[str, float | int | str]] = []
+    outputs_by_horizon: dict[str, dict[str, object]] = {}
+
+    for horizon_name, horizon_cfg in COMBO_HORIZONS.items():
+        target_col = f"future_ret_{horizon_name}"
+        periods_per_year = int(horizon_cfg["periods_per_year"])
+        model_data, train_idx, valid_idx, test_idx = prepare_model_data(alpha_df, combo_cols, target_col=target_col)
+
+        signals, ic_weights = build_combination_signals(model_data, combo_cols, target_col, train_idx)
+        bt_results = {
+            name: signal_backtest(
+                model_data,
+                sig,
+                train_idx,
+                method="quantile",
+                q=COMBO_DEFAULT_QUANTILE,
+                fee_bps=2.0,
+            )
+            for name, sig in signals.items()
+        }
+
+        period_rows: list[pd.DataFrame] = []
+        horizon_sensitivity: list[pd.DataFrame] = []
+        for name, result in bt_results.items():
+            period_df = metrics_by_period(
+                result,
+                train_idx,
+                valid_idx,
+                test_idx,
+                periods_per_year=periods_per_year,
+            )
+            period_df = period_df.reset_index(names=["period"])
+            period_df["method"] = name
+            period_df["horizon"] = horizon_name
+            period_rows.append(period_df)
+
+            calendar_detail, calendar_summary = calendar_returns_table(
+                result,
+                train_idx,
+                valid_idx,
+                test_idx,
+                method=name,
+                horizon=horizon_name,
+            )
+            if not calendar_detail.empty:
+                all_calendar_detail.append(calendar_detail)
+            if not calendar_summary.empty:
+                all_calendar_summary.append(calendar_summary)
+
+            sensitivity = combination_sensitivity_test(
+                model_data,
+                signals[name],
+                train_idx,
+                valid_idx,
+                test_idx,
+                method=name,
+                periods_per_year=periods_per_year,
+            )
+            sensitivity["horizon"] = horizon_name
+            horizon_sensitivity.append(sensitivity)
+
+        period_metrics = pd.concat(period_rows, ignore_index=True)
+        all_period_metrics.append(period_metrics)
+        sensitivity = pd.concat(horizon_sensitivity, ignore_index=True)
+        all_sensitivity.append(sensitivity)
+
+        for factor_name, weight in ic_weights.items():
+            all_ic_weights.append({"horizon": horizon_name, "factor": factor_name, "weight": float(weight)})
+
+        horizon_slug = horizon_name.replace("/", "_")
+        _plot_combo_equity_curves(
+            bt_results,
+            title=f"{symbol} signal combination equity ({horizon_name})",
+            save_path=COMBO_FIGURES_OUT / f"combo_equity_{horizon_slug}.png",
+        )
+        for name in signals:
+            method_sensitivity = sensitivity[sensitivity["method"] == name]
+            if method_sensitivity.empty:
+                continue
+            _plot_combo_sensitivity_heatmap(
+                method_sensitivity,
+                period="test",
+                save_path=COMBO_FIGURES_OUT / f"combo_sensitivity_{horizon_slug}_{name}.png",
+            )
+
+        for name, result in bt_results.items():
+            result_out = result.copy()
+            result_out.insert(0, "datetime", result_out.index)
+            result_out.to_csv(COMBO_BACKTESTS_OUT / f"combo_{horizon_slug}_{name}_backtest.csv", index=False)
+
+        outputs_by_horizon[horizon_name] = {
+            "model_data": model_data,
+            "signals": signals,
+            "bt_results": bt_results,
+            "period_metrics": period_metrics,
+            "sensitivity": sensitivity,
+            "ic_weights": ic_weights,
+            "selected_factors": selected_factors,
+            "train_idx": train_idx,
+            "valid_idx": valid_idx,
+            "test_idx": test_idx,
+        }
+
+    period_metrics_df = pd.concat(all_period_metrics, ignore_index=True)
+    sensitivity_df = pd.concat(all_sensitivity, ignore_index=True)
+    calendar_detail_df = pd.concat(all_calendar_detail, ignore_index=True) if all_calendar_detail else pd.DataFrame()
+    calendar_summary_df = pd.concat(all_calendar_summary, ignore_index=True) if all_calendar_summary else pd.DataFrame()
+    ic_weights_df = pd.DataFrame(all_ic_weights)
+
+    selected_factors.to_csv(COMBO_RESULTS_OUT / "combo_selected_factors.csv", index=False)
+    period_metrics_df.to_csv(COMBO_RESULTS_OUT / "combo_period_metrics.csv", index=False)
+    sensitivity_df.to_csv(COMBO_RESULTS_OUT / "combo_sensitivity.csv", index=False)
+    if not calendar_detail_df.empty:
+        calendar_detail_df.to_csv(COMBO_RESULTS_OUT / "combo_calendar_returns.csv", index=False)
+    if not calendar_summary_df.empty:
+        calendar_summary_df.to_csv(COMBO_RESULTS_OUT / "combo_calendar_summary.csv", index=False)
+    ic_weights_df.to_csv(COMBO_RESULTS_OUT / "combo_ic_weights.csv", index=False)
+    period_metrics_df.to_csv(COMBO_RESULTS_OUT / "combo_summary.csv", index=False)
+
+    print("Class 3 reports saved to:", CLASS3_CSV.resolve())
+    print("Class 3 backtests saved to:", CLASS3_BACKTESTS.resolve())
+    print("Class 3 figures saved to:", CLASS3_FIGURES.resolve())
+    print("Selected factors:", selected_factors["factor"].tolist())
+    print("Horizons tested:", list(COMBO_HORIZONS.keys()))
+    print("Combination methods:", list(outputs_by_horizon["1h"]["bt_results"].keys()))
+
+    return {
+        "selected_factors": selected_factors,
+        "period_metrics": period_metrics_df,
+        "sensitivity": sensitivity_df,
+        "calendar_returns": calendar_detail_df,
+        "calendar_summary": calendar_summary_df,
+        "ic_weights": ic_weights_df,
+        "by_horizon": outputs_by_horizon,
+    }
+
+
 def main() -> None:
-    """Execute baseline workflow, scenarios, and factor workflow."""
-    print("[Stage 1/4] Running baseline workflow...")
+    # Five-stage pipeline: Class-1 trend -> scenarios -> Class-2 factors -> Class-3 combination
+    print("[Stage 1/5] Running baseline workflow...")
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
-    print("[Stage 2/4] Baseline summary:")
+    print("[Stage 2/5] Baseline summary:")
     print(summary_table)
 
     btc = results["BTC/USDT"]["backtest"]
     if isinstance(btc, pd.DataFrame):
-        print("[Stage 2/3] Generating baseline plots...")
+        print("[Stage 2/5] Generating baseline plots...")
         plot_price_and_mas(
             btc,
             fast=40,
@@ -1021,11 +1627,14 @@ def main() -> None:
             save_path=FIGURES / "baseline_btc_equity.png",
         )
 
-    print("[Stage 3/4] Running scenario analyses...")
+    print("[Stage 3/5] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
 
-    print("[Stage 4/4] Running factor research workflow...")
-    run_factor_research_workflow(clean_data)
+    print("[Stage 4/5] Running factor research workflow...")
+    factor_results = run_factor_research_workflow(clean_data)
+
+    print("[Stage 5/5] Running Class 3 model combination workflow...")
+    run_model_combination_workflow(clean_data, factor_results=factor_results)
 
 
 if __name__ == "__main__":

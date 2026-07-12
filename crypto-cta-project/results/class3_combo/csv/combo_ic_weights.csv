@@ -1,0 +1,16 @@
+horizon,factor,weight
+1h,combo_factor_mfi_14,0.3489479898596879
+1h,combo_factor_ret_autocorr_12w,0.21846963016674392
+1h,combo_factor_minus_di,0.17260654448457505
+1h,combo_factor_mom_4w,0.1340593508373333
+1h,combo_factor_rev_2w,0.12591648465166005
+1d,combo_factor_ret_autocorr_12w,0.35057715766886893
+1d,combo_factor_mom_4w,0.23379174480828033
+1d,combo_factor_rev_2w,0.20992906455283544
+1d,combo_factor_minus_di,0.14898807045662715
+1d,combo_factor_mfi_14,0.05671396251338824
+1w,combo_factor_ret_autocorr_12w,0.36803517084970905
+1w,combo_factor_mom_4w,0.24136400843257974
+1w,combo_factor_rev_2w,0.2236171158515735
+1w,combo_factor_minus_di,0.09423517930437597
+1w,combo_factor_mfi_14,0.0727485255617618
