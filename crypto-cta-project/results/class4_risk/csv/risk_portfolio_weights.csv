@@ -1,0 +1,17 @@
+sleeve,method,asset,weight
+baseline,equal,BTC/USDT,0.5
+baseline,equal,ETH/USDT,0.5
+baseline,sharpe,BTC/USDT,0.9885600057052693
+baseline,sharpe,ETH/USDT,0.011439994294730771
+baseline,risk_target,BTC/USDT,0.5517196504499594
+baseline,risk_target,ETH/USDT,0.4482803495500407
+baseline,mvo,BTC/USDT,0.5
+baseline,mvo,ETH/USDT,0.5
+fixed_tpsl,equal,BTC/USDT,0.5
+fixed_tpsl,equal,ETH/USDT,0.5
+fixed_tpsl,sharpe,BTC/USDT,0.8061994798199988
+fixed_tpsl,sharpe,ETH/USDT,0.19380052018000116
+fixed_tpsl,risk_target,BTC/USDT,0.538413260166225
+fixed_tpsl,risk_target,ETH/USDT,0.4615867398337749
+fixed_tpsl,mvo,BTC/USDT,0.5
+fixed_tpsl,mvo,ETH/USDT,0.5

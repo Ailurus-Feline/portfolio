@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import ccxt
+from scipy.optimize import minimize
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.tree import DecisionTreeRegressor
 
@@ -25,6 +26,8 @@ CLASS2_FIGURES = RESULTS / "class2_factor" / "figures"
 CLASS3_CSV = RESULTS / "class3_combo" / "csv"
 CLASS3_BACKTESTS = CLASS3_CSV / "backtests"
 CLASS3_FIGURES = RESULTS / "class3_combo" / "figures"
+CLASS4_CSV = RESULTS / "class4_risk" / "csv"
+CLASS4_FIGURES = RESULTS / "class4_risk" / "figures"
 CSV_OUT = CLASS1_CSV
 FIGURES = CLASS1_FIGURES
 FACTOR_DATA_OUT = CLASS2_CSV
@@ -43,6 +46,8 @@ for path_obj in [
     CLASS3_CSV,
     CLASS3_BACKTESTS,
     CLASS3_FIGURES,
+    CLASS4_CSV,
+    CLASS4_FIGURES,
 ]:
     path_obj.mkdir(parents=True, exist_ok=True)
 
@@ -72,6 +77,22 @@ COMBO_DEFAULT_QUANTILE = 0.90
 COMBO_SENSITIVITY_QUANTILES = [0.60, 0.65, 0.70, 0.75, 0.80]
 COMBO_SENSITIVITY_FEES_BPS = [2.0, 5.0, 10.0]
 COMBO_LOOKBACK_WINDOWS = [12 * HOURS_PER_DAY, 24 * HOURS_PER_DAY, 48 * HOURS_PER_DAY]
+
+# Class 4: exit rules + multi-asset risk allocation
+CLASS4_SYMBOLS = ["BTC/USDT", "ETH/USDT"]
+CLASS4_METHOD = "ridge"
+CLASS4_HORIZON = "1h"
+CLASS4_QUANTILE = COMBO_DEFAULT_QUANTILE
+CLASS4_FEE_BPS = 2.0
+CLASS4_FIXED_TP_PCT = 0.02
+CLASS4_FIXED_SL_PCT = 0.01
+CLASS4_ATR_WINDOW = 24
+CLASS4_ATR_TP_MULT = 2.0
+CLASS4_ATR_SL_MULT = 1.0
+CLASS4_TIME_STOP_BARS = 24
+CLASS4_TRAIL_PCT = 0.10
+CLASS4_MVO_RISK_AVERSION = 5.0
+CLASS4_PERIODS_PER_YEAR = 24 * 365
 
 
 def make_exchange(exchange_id: str = EXCHANGE_ID):
@@ -1603,17 +1624,494 @@ def run_model_combination_workflow(
     }
 
 
+def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    prev_close = close.shift(1)
+    ranges = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    )
+    return ranges.max(axis=1)
+
+
+def average_true_range(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 24) -> pd.Series:
+    return true_range(high, low, close).rolling(window, min_periods=max(5, window // 4)).mean()
+
+
+def build_class4_signal(
+    clean_df: pd.DataFrame,
+    selected_factors: pd.DataFrame,
+    method: str = CLASS4_METHOD,
+    horizon: str = CLASS4_HORIZON,
+) -> tuple[pd.DataFrame, pd.Series, pd.Index, pd.Index, pd.Index]:
+    alpha_df = build_alpha_dataset(clean_df.copy())
+    alpha_df = add_horizon_targets(alpha_df)
+    alpha_df, combo_cols = prepare_directed_alpha_matrix(alpha_df, selected_factors)
+    target_col = f"future_ret_{horizon}"
+    model_data, train_idx, valid_idx, test_idx = prepare_model_data(alpha_df, combo_cols, target_col=target_col)
+    signals, _ = build_combination_signals(model_data, combo_cols, target_col, train_idx)
+    if method not in signals:
+        raise KeyError(f"Unknown Class 4 method '{method}'. Available: {list(signals)}")
+    return model_data, signals[method], train_idx, valid_idx, test_idx
+
+
+def apply_exit_rules(
+    ohlcv: pd.DataFrame,
+    target_position: pd.Series,
+    mode: str = "none",
+    fee_bps: float = CLASS4_FEE_BPS,
+    tp_pct: float = CLASS4_FIXED_TP_PCT,
+    sl_pct: float = CLASS4_FIXED_SL_PCT,
+    atr: pd.Series | None = None,
+    atr_tp_mult: float = CLASS4_ATR_TP_MULT,
+    atr_sl_mult: float = CLASS4_ATR_SL_MULT,
+    time_stop_bars: int = CLASS4_TIME_STOP_BARS,
+    trail_pct: float = CLASS4_TRAIL_PCT,
+) -> pd.DataFrame:
+    # Conservative OHLC assumption: if both TP and SL hit in one bar, SL fires first.
+    bars = ohlcv[["open", "high", "low", "close"]].copy()
+    bars["ret"] = bars["close"].pct_change()
+    aligned = bars.join(target_position.rename("target"), how="inner").dropna(subset=["ret"])
+    if atr is not None:
+        aligned = aligned.join(atr.rename("atr"), how="left")
+
+    n = len(aligned)
+    position = np.zeros(n, dtype=float)
+    exit_reason = np.array([""] * n, dtype=object)
+    entry_price = np.full(n, np.nan)
+    hold_bars = np.zeros(n, dtype=int)
+
+    cur_pos = 0.0
+    cur_entry = np.nan
+    cur_hold = 0
+    extreme = np.nan  # running high for long / running low for short
+
+    high = aligned["high"].to_numpy()
+    low = aligned["low"].to_numpy()
+    close = aligned["close"].to_numpy()
+    target = aligned["target"].to_numpy()
+    atr_vals = aligned["atr"].to_numpy() if "atr" in aligned.columns else np.full(n, np.nan)
+
+    for i in range(n):
+        desired = float(target[i]) if pd.notna(target[i]) else 0.0
+
+        # Enter / flip when flat or desired sign changes and exit rule is not forcing flat.
+        if cur_pos == 0.0 and desired != 0.0:
+            cur_pos = desired
+            cur_entry = close[i]
+            cur_hold = 0
+            extreme = close[i]
+            exit_reason[i] = "enter"
+        elif cur_pos != 0.0 and desired != 0.0 and np.sign(desired) != np.sign(cur_pos):
+            cur_pos = desired
+            cur_entry = close[i]
+            cur_hold = 0
+            extreme = close[i]
+            exit_reason[i] = "flip"
+        elif cur_pos != 0.0:
+            cur_hold += 1
+            if cur_pos > 0:
+                extreme = close[i] if not np.isfinite(extreme) else max(extreme, high[i])
+            else:
+                extreme = close[i] if not np.isfinite(extreme) else min(extreme, low[i])
+
+            hit_sl = False
+            hit_tp = False
+            reason = ""
+
+            if mode == "fixed":
+                if cur_pos > 0:
+                    hit_sl = low[i] <= cur_entry * (1.0 - sl_pct)
+                    hit_tp = high[i] >= cur_entry * (1.0 + tp_pct)
+                else:
+                    hit_sl = high[i] >= cur_entry * (1.0 + sl_pct)
+                    hit_tp = low[i] <= cur_entry * (1.0 - tp_pct)
+            elif mode == "atr":
+                atr_i = atr_vals[i]
+                if np.isfinite(atr_i) and atr_i > 0 and np.isfinite(cur_entry):
+                    if cur_pos > 0:
+                        hit_sl = low[i] <= cur_entry - atr_sl_mult * atr_i
+                        hit_tp = high[i] >= cur_entry + atr_tp_mult * atr_i
+                    else:
+                        hit_sl = high[i] >= cur_entry + atr_sl_mult * atr_i
+                        hit_tp = low[i] <= cur_entry - atr_tp_mult * atr_i
+            elif mode == "trailing":
+                if np.isfinite(extreme):
+                    if cur_pos > 0:
+                        stop = extreme * (1.0 - trail_pct)
+                        hit_sl = low[i] <= stop
+                    else:
+                        stop = extreme * (1.0 + trail_pct)
+                        hit_sl = high[i] >= stop
+            elif mode == "time":
+                if cur_hold >= time_stop_bars:
+                    hit_sl = True
+                    reason = "time_stop"
+
+            if mode in {"fixed", "atr"} and (hit_sl or hit_tp):
+                # Same-bar ambiguity: prefer stop-loss.
+                if hit_sl:
+                    reason = "stop_loss"
+                else:
+                    reason = "take_profit"
+                cur_pos = 0.0
+                cur_entry = np.nan
+                cur_hold = 0
+                extreme = np.nan
+                exit_reason[i] = reason
+            elif mode == "trailing" and hit_sl:
+                cur_pos = 0.0
+                cur_entry = np.nan
+                cur_hold = 0
+                extreme = np.nan
+                exit_reason[i] = "trailing_stop"
+            elif mode == "time" and hit_sl:
+                cur_pos = 0.0
+                cur_entry = np.nan
+                cur_hold = 0
+                extreme = np.nan
+                exit_reason[i] = reason
+            elif desired == 0.0:
+                cur_pos = 0.0
+                cur_entry = np.nan
+                cur_hold = 0
+                extreme = np.nan
+                exit_reason[i] = "signal_flat"
+
+        position[i] = cur_pos
+        entry_price[i] = cur_entry
+        hold_bars[i] = cur_hold
+
+    out = aligned.copy()
+    out["position"] = position
+    out["entry_price"] = entry_price
+    out["hold_bars"] = hold_bars
+    out["exit_reason"] = exit_reason
+    out["turnover"] = out["position"].diff().abs().fillna(out["position"].abs())
+    out["fee"] = out["turnover"] * fee_bps / 10_000
+    out["pnl"] = out["position"].shift(1).fillna(0.0) * out["ret"] - out["fee"]
+    out["equity"] = (1 + out["pnl"].fillna(0.0)).cumprod()
+    return out
+
+
+def compare_exit_rules(
+    ohlcv: pd.DataFrame,
+    target_position: pd.Series,
+    train_idx: pd.Index,
+    valid_idx: pd.Index,
+    test_idx: pd.Index,
+    symbol: str,
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    atr = average_true_range(ohlcv["high"], ohlcv["low"], ohlcv["close"], window=CLASS4_ATR_WINDOW)
+    modes = {
+        "none": {},
+        "fixed": {"tp_pct": CLASS4_FIXED_TP_PCT, "sl_pct": CLASS4_FIXED_SL_PCT},
+        "atr": {"atr": atr, "atr_tp_mult": CLASS4_ATR_TP_MULT, "atr_sl_mult": CLASS4_ATR_SL_MULT},
+        "time": {"time_stop_bars": CLASS4_TIME_STOP_BARS},
+        "trailing": {"trail_pct": CLASS4_TRAIL_PCT},
+    }
+
+    bt_by_mode: dict[str, pd.DataFrame] = {}
+    rows: list[dict[str, float | int | str]] = []
+    for mode, kwargs in modes.items():
+        bt = apply_exit_rules(ohlcv, target_position, mode=mode, fee_bps=CLASS4_FEE_BPS, **kwargs)
+        bt = bt.copy()
+        bt["signal"] = target_position.reindex(bt.index)
+        bt_by_mode[mode] = bt
+        period_df = metrics_by_period(
+            bt,
+            train_idx,
+            valid_idx,
+            test_idx,
+            periods_per_year=CLASS4_PERIODS_PER_YEAR,
+        ).reset_index(names=["period"])
+        period_df["exit_mode"] = mode
+        period_df["symbol"] = symbol
+        rows.extend(period_df.to_dict("records"))
+
+    return bt_by_mode, pd.DataFrame(rows)
+
+
+def allocate_portfolio_weights(
+    train_returns: pd.DataFrame,
+    method: str = "equal",
+    risk_aversion: float = CLASS4_MVO_RISK_AVERSION,
+) -> pd.Series:
+    assets = list(train_returns.columns)
+    n = len(assets)
+    if n == 0:
+        return pd.Series(dtype=float)
+
+    if method == "equal":
+        weights = np.ones(n) / n
+    elif method == "sharpe":
+        mu = train_returns.mean()
+        vol = train_returns.std(ddof=1).replace(0, np.nan)
+        sharpe = (mu / vol).replace([np.inf, -np.inf], np.nan).fillna(0.0).clip(lower=0.0)
+        if sharpe.sum() == 0:
+            weights = np.ones(n) / n
+        else:
+            weights = (sharpe / sharpe.sum()).to_numpy()
+    elif method == "risk_target":
+        vol = train_returns.std(ddof=1).replace(0, np.nan)
+        inv_vol = (1.0 / vol).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        if inv_vol.sum() == 0:
+            weights = np.ones(n) / n
+        else:
+            weights = (inv_vol / inv_vol.sum()).to_numpy()
+    elif method == "mvo":
+        mu_hat = train_returns.mean().to_numpy()
+        cov_hat = np.cov(train_returns.T)
+        if cov_hat.ndim == 0:
+            cov_hat = np.array([[float(cov_hat)]])
+
+        def objective(w: np.ndarray) -> float:
+            return -(w @ mu_hat - risk_aversion * (w @ cov_hat @ w))
+
+        result = minimize(
+            objective,
+            x0=np.ones(n) / n,
+            method="SLSQP",
+            bounds=[(0.0, 1.0)] * n,
+            constraints={"type": "eq", "fun": lambda w: np.sum(w) - 1.0},
+        )
+        weights = result.x if result.success else np.ones(n) / n
+    else:
+        raise ValueError("method should be equal, sharpe, risk_target, or mvo")
+
+    weights = np.asarray(weights, dtype=float)
+    weights = np.clip(weights, 0.0, None)
+    if weights.sum() == 0:
+        weights = np.ones(n) / n
+    else:
+        weights = weights / weights.sum()
+    return pd.Series(weights, index=assets, name=method)
+
+
+def build_portfolio_returns(
+    asset_pnl: pd.DataFrame,
+    weights: pd.Series,
+) -> pd.Series:
+    aligned = asset_pnl[weights.index].fillna(0.0)
+    return aligned.mul(weights, axis=1).sum(axis=1).rename("portfolio_pnl")
+
+
+def run_risk_layer_workflow(
+    clean_data: dict[str, pd.DataFrame],
+    factor_results: dict[str, pd.DataFrame | pd.Series] | None = None,
+    symbols: list[str] | None = None,
+) -> dict[str, object]:
+    symbols = symbols or CLASS4_SYMBOLS
+    selected_factors = load_selected_factors(COMBO_TOP_FACTOR_COUNT, factor_results)
+
+    asset_signals: dict[str, pd.Series] = {}
+    asset_targets: dict[str, pd.Series] = {}
+    asset_splits: dict[str, tuple[pd.Index, pd.Index, pd.Index]] = {}
+    exit_metrics_rows: list[pd.DataFrame] = []
+    asset_baseline_pnl: dict[str, pd.Series] = {}
+    asset_fixed_pnl: dict[str, pd.Series] = {}
+
+    for symbol in symbols:
+        if symbol not in clean_data:
+            raw = download_or_demo([symbol])[symbol]
+            clean_data[symbol] = clean_ohlcv(raw)
+
+        clean_df = clean_data[symbol].copy()
+        model_data, signal, train_idx, valid_idx, test_idx = build_class4_signal(
+            clean_df,
+            selected_factors,
+            method=CLASS4_METHOD,
+            horizon=CLASS4_HORIZON,
+        )
+        baseline_bt = signal_backtest(
+            model_data,
+            signal,
+            train_idx,
+            method="quantile",
+            q=CLASS4_QUANTILE,
+            fee_bps=CLASS4_FEE_BPS,
+        )
+        target_position = baseline_bt["position"]
+        asset_targets[symbol] = target_position
+        asset_signals[symbol] = signal
+        asset_splits[symbol] = (train_idx, valid_idx, test_idx)
+
+        ohlcv = clean_df.set_index("datetime")[["open", "high", "low", "close"]]
+        bt_by_mode, metrics_df = compare_exit_rules(
+            ohlcv,
+            target_position,
+            train_idx,
+            valid_idx,
+            test_idx,
+            symbol=symbol,
+        )
+        exit_metrics_rows.append(metrics_df)
+
+        safe = symbol.replace("/", "_")
+        for mode, bt in bt_by_mode.items():
+            out = bt.copy()
+            out.insert(0, "datetime", out.index)
+            out.to_csv(CLASS4_CSV / f"risk_{safe}_{mode}_backtest.csv", index=False)
+
+        asset_baseline_pnl[symbol] = bt_by_mode["none"]["pnl"].rename(symbol)
+        asset_fixed_pnl[symbol] = bt_by_mode["fixed"]["pnl"].rename(symbol)
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        for mode, bt in bt_by_mode.items():
+            ax.plot(bt.index, bt["equity"], label=mode)
+        ax.set_title(f"{symbol} exit-rule equity comparison ({CLASS4_METHOD}/{CLASS4_HORIZON})")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Equity")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(CLASS4_FIGURES / f"risk_{safe}_exit_equity.png", dpi=150)
+        plt.close(fig)
+
+    exit_metrics = pd.concat(exit_metrics_rows, ignore_index=True)
+    exit_metrics.to_csv(CLASS4_CSV / "risk_exit_metrics.csv", index=False)
+
+    # Portfolio allocation uses BTC+ETH strategy pnl; weights fit on the common train window.
+    baseline_pnl_df = pd.concat(asset_baseline_pnl.values(), axis=1).dropna(how="any")
+    fixed_pnl_df = pd.concat(asset_fixed_pnl.values(), axis=1).reindex(baseline_pnl_df.index).fillna(0.0)
+
+    # Use BTC split as the chronological reference for portfolio train/test.
+    ref_train, ref_valid, ref_test = asset_splits[symbols[0]]
+    common_index = baseline_pnl_df.index
+    train_mask = common_index.isin(ref_train)
+    test_mask = common_index.isin(ref_test)
+    train_returns = baseline_pnl_df.loc[train_mask]
+
+    allocation_methods = ["equal", "sharpe", "risk_target", "mvo"]
+    weight_rows: list[dict[str, float | str]] = []
+    portfolio_metric_rows: list[dict[str, float | str]] = []
+    portfolio_curves = pd.DataFrame({"datetime": common_index})
+
+    for sleeve_name, sleeve_pnl in {"baseline": baseline_pnl_df, "fixed_tpsl": fixed_pnl_df}.items():
+        train_sleeve = sleeve_pnl.loc[train_mask]
+        for method in allocation_methods:
+            weights = allocate_portfolio_weights(train_sleeve, method=method)
+            for asset, weight in weights.items():
+                weight_rows.append(
+                    {
+                        "sleeve": sleeve_name,
+                        "method": method,
+                        "asset": asset,
+                        "weight": float(weight),
+                    }
+                )
+            port_pnl = build_portfolio_returns(sleeve_pnl, weights)
+            portfolio_curves[f"{sleeve_name}_{method}"] = (1 + port_pnl.fillna(0.0)).cumprod().to_numpy()
+
+            for period_name, mask in {"train": train_mask, "valid": common_index.isin(ref_valid), "test": test_mask}.items():
+                sub = port_pnl.loc[mask]
+                metrics = calc_signal_metrics(sub, periods_per_year=CLASS4_PERIODS_PER_YEAR)
+                portfolio_metric_rows.append(
+                    {
+                        "sleeve": sleeve_name,
+                        "method": method,
+                        "period": period_name,
+                        **{k: float(v) if pd.notna(v) else np.nan for k, v in metrics.to_dict().items()},
+                    }
+                )
+
+    weights_df = pd.DataFrame(weight_rows)
+    portfolio_metrics_df = pd.DataFrame(portfolio_metric_rows)
+    weights_df.to_csv(CLASS4_CSV / "risk_portfolio_weights.csv", index=False)
+    portfolio_metrics_df.to_csv(CLASS4_CSV / "risk_portfolio_metrics.csv", index=False)
+    portfolio_curves.to_csv(CLASS4_CSV / "risk_portfolio_equity_curves.csv", index=False)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for col in portfolio_curves.columns:
+        if col == "datetime":
+            continue
+        if col.startswith("baseline_"):
+            ax.plot(portfolio_curves["datetime"], portfolio_curves[col], label=col)
+    ax.set_title("Multi-asset portfolio equity (baseline sleeve, no TP/SL)")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(CLASS4_FIGURES / "risk_portfolio_equity_baseline.png", dpi=150)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for col in portfolio_curves.columns:
+        if col == "datetime":
+            continue
+        if col.startswith("fixed_tpsl_"):
+            ax.plot(portfolio_curves["datetime"], portfolio_curves[col], label=col)
+    ax.set_title("Multi-asset portfolio equity (fixed TP/SL sleeve)")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(CLASS4_FIGURES / "risk_portfolio_equity_fixed_tpsl.png", dpi=150)
+    plt.close(fig)
+
+    # Side-by-side summary: baseline vs fixed TP/SL on test for BTC and portfolio equal-weight.
+    summary_rows: list[dict[str, float | str]] = []
+    for _, row in exit_metrics[(exit_metrics["period"] == "test")].iterrows():
+        summary_rows.append(
+            {
+                "scope": "single_asset",
+                "symbol": row["symbol"],
+                "exit_mode": row["exit_mode"],
+                "sharpe": row.get("sharpe", np.nan),
+                "ann_return": row.get("ann_return", np.nan),
+                "max_drawdown": row.get("max_drawdown", np.nan),
+                "hit_rate": row.get("hit_rate", np.nan),
+            }
+        )
+    for _, row in portfolio_metrics_df[portfolio_metrics_df["period"] == "test"].iterrows():
+        summary_rows.append(
+            {
+                "scope": "portfolio",
+                "symbol": "BTC+ETH",
+                "exit_mode": f"{row['sleeve']}:{row['method']}",
+                "sharpe": row.get("sharpe", np.nan),
+                "ann_return": row.get("ann_return", np.nan),
+                "max_drawdown": row.get("max_drawdown", np.nan),
+                "hit_rate": row.get("hit_rate", np.nan),
+            }
+        )
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df.to_csv(CLASS4_CSV / "risk_summary.csv", index=False)
+
+    print("Class 4 reports saved to:", CLASS4_CSV.resolve())
+    print("Class 4 figures saved to:", CLASS4_FIGURES.resolve())
+    print("Exit modes compared: none / fixed / atr / time / trailing")
+    print("Portfolio methods:", allocation_methods)
+    print("Assets:", symbols)
+
+    return {
+        "selected_factors": selected_factors,
+        "exit_metrics": exit_metrics,
+        "portfolio_weights": weights_df,
+        "portfolio_metrics": portfolio_metrics_df,
+        "portfolio_curves": portfolio_curves,
+        "summary": summary_df,
+        "asset_signals": asset_signals,
+        "asset_targets": asset_targets,
+    }
+
+
 def main() -> None:
-    # Five-stage pipeline: Class-1 trend -> scenarios -> Class-2 factors -> Class-3 combination
-    print("[Stage 1/5] Running baseline workflow...")
+    # Six-stage pipeline: Class1 trend -> scenarios -> Class2 factors -> Class3 combo -> Class4 risk
+    print("[Stage 1/6] Running baseline workflow...")
     clean_data, summary_table, results = run_baseline_workflow(SYMBOLS)
 
-    print("[Stage 2/5] Baseline summary:")
+    print("[Stage 2/6] Baseline summary:")
     print(summary_table)
 
     btc = results["BTC/USDT"]["backtest"]
     if isinstance(btc, pd.DataFrame):
-        print("[Stage 2/5] Generating baseline plots...")
+        print("[Stage 2/6] Generating baseline plots...")
         plot_price_and_mas(
             btc,
             fast=40,
@@ -1627,14 +2125,17 @@ def main() -> None:
             save_path=FIGURES / "baseline_btc_equity.png",
         )
 
-    print("[Stage 3/5] Running scenario analyses...")
+    print("[Stage 3/6] Running scenario analyses...")
     run_strategy_scenarios(clean_data)
 
-    print("[Stage 4/5] Running factor research workflow...")
+    print("[Stage 4/6] Running factor research workflow...")
     factor_results = run_factor_research_workflow(clean_data)
 
-    print("[Stage 5/5] Running Class 3 model combination workflow...")
+    print("[Stage 5/6] Running Class 3 model combination workflow...")
     run_model_combination_workflow(clean_data, factor_results=factor_results)
+
+    print("[Stage 6/6] Running Class 4 risk layer workflow...")
+    run_risk_layer_workflow(clean_data, factor_results=factor_results)
 
 
 if __name__ == "__main__":
