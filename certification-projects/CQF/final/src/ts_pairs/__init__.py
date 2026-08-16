@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .backtest import BacktestResult, run_pairs_backtest
 from .cointegration import EngleGrangerResult, engle_granger, engle_granger_from_panel
 from .config import PAIRS, PROJECT_ROOT
 from .data import align_pair, load_all_pairs
@@ -27,5 +28,7 @@ __all__ = [
     "OUFit",
     "scan_z_grid",
     "ZStarScan",
+    "run_pairs_backtest",
+    "BacktestResult",
     "__version__",
 ]
