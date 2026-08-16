@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Data & heavy artifacts (keep structure via .gitkeep)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+figures/*
+!figures/.gitkeep
+!figures/*.png
+results/*
+!results/.gitkeep
+!results/*.csv
+
+# Submission binaries (rebuild locally)
+submission/*
+!submission/.gitkeep
+!submission/README.md
+!submission/*.pdf
+*.zip
+
+# Reports build
+report/_build/
+*.aux
+*.log
+*.out
+*.toc
