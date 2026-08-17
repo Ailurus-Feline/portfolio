@@ -9,6 +9,7 @@ from .data import align_pair, load_all_pairs
 from .johansen import JohansenResult, johansen_from_panel, johansen_pair
 from .ou_process import OUFit, fit_ou_ar1, zscore_series
 from .signals import ZStarScan, scan_z_grid
+from .walkforward import TrainTestBundle, run_train_test_backtest
 
 __version__ = "0.1.0"
 
@@ -30,5 +31,7 @@ __all__ = [
     "ZStarScan",
     "run_pairs_backtest",
     "BacktestResult",
+    "run_train_test_backtest",
+    "TrainTestBundle",
     "__version__",
 ]
