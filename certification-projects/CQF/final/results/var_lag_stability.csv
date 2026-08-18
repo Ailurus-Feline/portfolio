@@ -1,0 +1,4 @@
+aic_lag,bic_lag,max_companion_modulus,stable,nobs,pair
+7,2,0.8236305522432458,True,1905,EWA_EWC
+8,2,0.82370916916056,True,1904,XLE_XOP
+7,2,0.7009347740322278,True,1905,GLD_GDX

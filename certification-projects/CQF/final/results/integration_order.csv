@@ -1,0 +1,7 @@
+name,adf_level_tau,adf_level_rejects_unitroot_5,adf_diff_tau,adf_diff_rejects_unitroot_5,kpss_level_rejects_I0_5,kpss_diff_rejects_I0_5,looks_I1,pair,role
+EWA,-0.8653918582793264,False,-31.51610331453082,True,True,False,True,EWA_EWC,main
+EWC,0.8628828554271074,False,-31.25241844937635,True,True,False,True,EWA_EWC,main
+XLE,-0.005423222732316776,False,-29.97232868675799,True,True,False,True,XLE_XOP,control
+XOP,-0.9200259196309509,False,-30.547693344673906,True,True,False,True,XLE_XOP,control
+GLD,0.389205011422429,False,-33.02064282691377,True,True,False,True,GLD_GDX,control
+GDX,-0.10700150753570573,False,-29.989649121755207,True,True,False,True,GLD_GDX,control
