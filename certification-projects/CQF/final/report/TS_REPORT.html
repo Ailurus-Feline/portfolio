@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>CQF TS Final Project Report</title>
+  <style>
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 900px;
+           margin: 2rem auto; padding: 0 1rem; line-height: 1.45; color: #222; }
+    code, pre { font-family: Menlo, Consolas, monospace; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92em; }
+    th, td { border: 1px solid #ccc; padding: 0.4rem 0.55rem; text-align: left; }
+    img { max-width: 100%; height: auto; }
+    h1, h2, h3 { color: #111; }
+    .math-display { margin: 1rem 0; text-align: center; overflow-x: auto; }
+    math { font-family: 'STIX Two Math', 'Cambria Math', 'Times New Roman', serif; }
+    @page { margin: 18mm 16mm 22mm 16mm; }
+  </style>
+</head>
+<body>
+<h1 id="pairs-trading-strategy-design-backtest">Pairs Trading Strategy Design &amp; Backtest</h1>
+<p><strong>CQF Final Project — Topic code: TS</strong><br />
+<strong>Cohort:</strong> January 2026<br />
+<strong>Language:</strong> Python  </p>
+<blockquote>
+<p><strong>Candidate:</strong> Mao Yikai</p>
+</blockquote>
+<hr />
+<h2 id="abstract">Abstract</h2>
+<p>This project designs and stress-tests a classical statistical-arbitrage pairs strategy on three U.S.-listed ETF pairs. The long-run link between legs is estimated with a matrix-form Engle–Granger (EG) regression and cross-checked with Johansen’s trace test on log-prices. Mean reversion of the cointegrating residual is quantified by mapping a discrete AR(1) to Ornstein–Uhlenbeck (OU) parameters (speed <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B8;</mi></mrow></math></span>, half-life, equilibrium volatility <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003C3;</mi><mrow><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">q</mi></mrow></mrow></msub></mrow></math></span>). Entry thresholds <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> are calibrated on a grid rather than fixed at one, and a dollar-neutral book is marked to market with two-leg transaction costs.  </p>
+<p>On the primary pair <strong>EWA–EWC</strong>, full-sample (in-sample) performance looks acceptable, but a <strong>70/30 chronological train/test split</strong> with frozen <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo>&#x0002C;</mo><mi>&#x003B2;</mi><mo>&#x0002C;</mo><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo stretchy="false">&#x00029;</mo></mrow></math></span> delivers a <strong>negative out-of-sample Sharpe</strong>. An <strong>eight-month rolling-<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span></strong> experiment further erodes performance relative to a fixed hedge ratio. Control pairs <strong>XLE–XOP</strong> and <strong>GLD–GDX</strong> show the same qualitative pattern. The central conclusion is that residual mean reversion alone is not sufficient for robust live pairs trading when cointegration is only borderline and parameters are estimated with look-ahead.</p>
+<hr />
+<h2 id="1-introduction">1. Introduction</h2>
+<h3 id="11-objective">1.1 Objective</h3>
+<p>Following the CQF TS brief, the project:</p>
+<ol>
+<li>implements the numerical core of cointegration-based pairs trading (matrix OLS, EG with ADF lag <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span>, OU half-life, iterative <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span>);</li>
+<li>adds Johansen / VECM diagnostics for depth;</li>
+<li>runs systematic backtests with drawdowns and rolling Sharpe;</li>
+<li>validates with time-ordered train/test splits and rolling re-estimation of <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span>.</li>
+</ol>
+<h3 id="12-economic-rationale-for-the-pairs">1.2 Economic rationale for the pairs</h3>
+<table>
+<thead>
+<tr>
+<th>Pair</th>
+<th>Role</th>
+<th>Economic story</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>EWA–EWC</strong></td>
+<td>Main</td>
+<td>Australia vs Canada country ETFs — both commodity-exposed “risk-on” markets (example highlighted in the project brief).</td>
+</tr>
+<tr>
+<td><strong>XLE–XOP</strong></td>
+<td>Control</td>
+<td>Broad energy sector vs upstream E&amp;P — shared oil factor, different operating leverage.</td>
+</tr>
+<tr>
+<td><strong>GLD–GDX</strong></td>
+<td>Control</td>
+<td>Bullion proxy vs gold miners — miners embed equity beta and cost curves; spreads often mean-revert but break in stress.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-data">1.3 Data</h3>
+<ul>
+<li><strong>Source:</strong> Yahoo Finance adjusted daily closes via <code>yfinance</code> (auto-adjusted).  </li>
+<li><strong>Sample:</strong> 2019-01-02 through the latest available bar at run time (~1,913 trading days).  </li>
+<li><strong>Alignment:</strong> inner join on trading dates; no cross-sectional forward fill.  </li>
+<li><strong>Levels vs returns:</strong> EG and the trading residual are built on <strong>price levels</strong>. Returns appear in P&amp;L accounting and in the VAR lag/stability diagnostic (the brief notes that VAR tests apply to stationary <em>changes</em>, not to a return-forecasting exercise).</li>
+</ul>
+<hr />
+<h2 id="2-methodology">2. Methodology</h2>
+<h3 id="21-matrix-ols">2.1 Matrix OLS</h3>
+<p>For design matrix <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>X</mi><mo>&#x02208;</mo><msup><mi>&#x0211D;</mi><mrow><mi>n</mi><mo>&#x000D7;</mo><mi>k</mi></mrow></msup></mrow></math></span> and response <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>y</mi><mo>&#x02208;</mo><msup><mi>&#x0211D;</mi><mrow><mi>n</mi></mrow></msup></mrow></math></span>,</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mover accent="true"><mi>&#x003B2;</mi><mo>&#x0005E;</mo></mover><mo>&#x0003D;</mo><mo stretchy="false">&#x00028;</mo><msup><mi>X</mi><mo>&#x022A4;</mo></msup><mi>X</mi><msup><mo stretchy="false">&#x00029;</mo><mrow><mo>&#x02212;</mo><mn>1</mn></mrow></msup><msup><mi>X</mi><mo>&#x022A4;</mo></msup><mi>y</mi><mo>&#x0002C;</mo><mspace width="2em" /><mover accent="true"><mi>e</mi><mo>&#x0005E;</mo></mover><mo>&#x0003D;</mo><mi>y</mi><mo>&#x02212;</mo><mi>X</mi><mover accent="true"><mi>&#x003B2;</mi><mo>&#x0005E;</mo></mover><mo>&#x0002C;</mo><mspace width="2em" /><msup><mover accent="true"><mi>&#x003C3;</mi><mo>&#x0005E;</mo></mover><mn>2</mn></msup><mo>&#x0003D;</mo><mfrac><mrow><msup><mover accent="true"><mi>e</mi><mo>&#x0005E;</mo></mover><mo>&#x022A4;</mo></msup><mover accent="true"><mi>e</mi><mo>&#x0005E;</mo></mover></mrow><mrow><mi>n</mi><mo>&#x02212;</mo><mi>k</mi></mrow></mfrac><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>This normal-equation estimator is coded explicitly (no black-box <code>statsmodels.OLS</code> for the cointegrating step), so the report can cite the classical formula.</p>
+<h3 id="21a-integration-order-adf-kpss">2.1a Integration order (ADF + KPSS)</h3>
+<p>Before EG is valid we need both legs to be I(1): non-stationary in <em>levels</em>, stationary after <em>one</em> difference. We use two complementary tests (as the brief lists ADF and KPSS):</p>
+<ul>
+<li><strong>ADF</strong> <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>H</mi><mn>0</mn></msub></mrow></math></span>: unit root (non-stationary). Reject if <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span> is more negative than the <em>standard</em> observed-series critical values (<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>3.43</mn><mo>&#x0002F;</mo><mo>&#x02212;</mo><mn>2.86</mn><mo>&#x0002F;</mo><mo>&#x02212;</mo><mn>2.57</mn></mrow></math></span>). These are <strong>not</strong> the EG residual critical values.</li>
+<li><strong>KPSS</strong> <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>H</mi><mn>0</mn></msub></mrow></math></span>: stationary around a constant. Reject if the statistic exceeds the 5% critical value. Classic I(1) signature: fail to reject ADF on levels, reject KPSS on levels, reject ADF on differences.</li>
+</ul>
+<h3 id="22-englegranger-steps-12">2.2 Engle–Granger (Steps 1–2)</h3>
+<p><strong>Step 1 — cointegrating regression</strong></p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>y</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mi>&#x003B1;</mi><mo>&#x0002B;</mo><mi>&#x003B2;</mi><msub><mi>x</mi><mi>t</mi></msub><mo>&#x0002B;</mo><msub><mi>e</mi><mi>t</mi></msub><mo>&#x0002E;</mo></mrow></math></div></p>
+<p><strong>ADF on the residual</strong> (brief: lag <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span>), constant, no trend:</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x00394;</mi><msub><mi>e</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mi>a</mi><mo>&#x0002B;</mo><mi>&#x003D5;</mi><msub><mi>e</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><mi>&#x003B3;</mi><mi>&#x00394;</mi><msub><mi>e</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><msub><mi>&#x003B5;</mi><mi>t</mi></msub><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>The <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span>-statistic on <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003D5;</mi></mrow></math></span> is compared with <strong>MacKinnon asymptotic critical values</strong> for EG residuals (constant, one regressor): <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>1</mn><mi>&#x00025;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mn>3.90</mn></mrow></math></span>, <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>5</mn><mi>&#x00025;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mn>3.34</mn></mrow></math></span>, <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>10</mn><mi>&#x00025;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mn>3.04</mn></mrow></math></span>. Reject “no cointegration” when <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span> is more negative than the critical value.</p>
+<p><strong>Step 2 — error-correction sketch</strong></p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x00394;</mi><msub><mi>y</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mi>c</mi><mo>&#x0002B;</mo><mi>&#x003BB;</mi><msub><mi>e</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><mi>&#x003B3;</mi><mi>&#x00394;</mi><msub><mi>x</mi><mi>t</mi></msub><mo>&#x0002B;</mo><msub><mi>u</mi><mi>t</mi></msub><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>A significantly negative <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi></mrow></math></span> indicates adjustment of <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>y</mi></mrow></math></span> toward the long-run relation.</p>
+<h3 id="23-johansen-depth-add-on-and-var-diagnostics">2.3 Johansen (depth add-on) and VAR diagnostics</h3>
+<p>On <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>log</mi></mrow></math></span> prices we run Johansen’s trace test (<code>statsmodels.tsa.vector_ar.vecm.coint_johansen</code>) with difference lags chosen by AIC on a levels VAR. The eigenvalue problem itself is library code (analogous to not re-coding a QP solver); lag choice, log transform, and rank interpretation are project-owned.</p>
+<p>Separately, as the brief suggests, we run a <strong>VAR on log-returns</strong> (stationary changes): AIC/BIC select the lag <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>p</mi></mrow></math></span>, and we check companion-matrix stability (all roots inside the unit circle). This is <em>not</em> a forecasting model — only a specification check.</p>
+<h3 id="24-ou-residual-dynamics-eg-step-3">2.4 OU residual dynamics (EG “Step 3”)</h3>
+<p>Fit</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>e</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mi>a</mi><mo>&#x0002B;</mo><mi>b</mi><msub><mi>e</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><msub><mi>&#x003B5;</mi><mi>t</mi></msub><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>If <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>0</mn><mo>&#x0003C;</mo><mi>b</mi><mo>&#x0003C;</mo><mn>1</mn></mrow></math></span>, map to OU with <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x00394;</mi><mi>t</mi><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span> trading day:</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x003B8;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mfrac><mrow><mi>ln</mi><mi>b</mi></mrow><mrow><mi>&#x00394;</mi><mi>t</mi></mrow></mfrac><mo>&#x0002C;</mo><mspace width="2em" /><mi>&#x003BC;</mi><mo>&#x0003D;</mo><mfrac><mrow><mi>a</mi></mrow><mrow><mn>1</mn><mo>&#x02212;</mo><mi>b</mi></mrow></mfrac><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>t</mi><mrow><mn>1</mn><mo>&#x0002F;</mo><mn>2</mn></mrow></msub><mo>&#x0003D;</mo><mfrac><mrow><mi>ln</mi><mn>2</mn></mrow><mrow><mi>&#x003B8;</mi></mrow></mfrac><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>&#x003C3;</mi><mrow><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">q</mi></mrow></mrow></msub><mo>&#x0003D;</mo><mfrac><mrow><msub><mi>&#x003C3;</mi><mi>&#x003B5;</mi></msub></mrow><mrow><msqrt><mrow><mn>1</mn><mo>&#x02212;</mo><msup><mi>b</mi><mn>2</mn></msup></mrow></msqrt></mrow></mfrac><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>Z-scores: <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>z</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mo stretchy="false">&#x00028;</mo><msub><mi>e</mi><mi>t</mi></msub><mo>&#x02212;</mo><mi>&#x003BC;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0002F;</mo><msub><mi>&#x003C3;</mi><mrow><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">q</mi></mrow></mrow></msub></mrow></math></span>.</p>
+<h3 id="25-signal-generation-and-inl28">2.5 Signal generation and <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span></h3>
+<ul>
+<li>Enter <strong>short spread</strong> when <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>z</mi><mi>t</mi></msub><mo>&#x02265;</mo><mo>&#x0002B;</mo><mi>Z</mi></mrow></math></span> (residual rich: short <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>y</mi></mrow></math></span>, long <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> units of <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>x</mi></mrow></math></span>).  </li>
+<li>Enter <strong>long spread</strong> when <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>z</mi><mi>t</mi></msub><mo>&#x02264;</mo><mo>&#x02212;</mo><mi>Z</mi></mrow></math></span>.  </li>
+<li>Exit when <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>z</mi><mi>t</mi></msub></mrow></math></span> touches <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>0</mn></mrow></math></span> (reversion to <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BC;</mi></mrow></math></span>).  </li>
+<li>Positions are causal; no pyramiding.</li>
+</ul>
+<p><strong><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> grid:</strong> <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x0007B;</mo><mn>0.5</mn><mo>&#x0002C;</mo><mn>0.75</mn><mo>&#x0002C;</mo><mn>1.0</mn><mo>&#x0002C;</mo><mn>1.25</mn><mo>&#x0002C;</mo><mn>1.5</mn><mo>&#x0002C;</mo><mn>1.75</mn><mo>&#x0002C;</mo><mn>2.0</mn><mo>&#x0002C;</mo><mn>2.5</mn><mo stretchy="false">&#x0007D;</mo></mrow></math></span>. We tabulate trade counts and pick the <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi></mrow></math></span> whose annualised trade frequency is closest to a target of four round-trips per year (documented heuristic, not a black-box optimiser). Wider bands produce fewer trades but larger residual excursions and higher break risk — exactly the trade-off required by the brief.</p>
+<h3 id="26-backtest-economics">2.6 Backtest economics</h3>
+<p>With lagged position <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>p</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub></mrow></math></span> and hedge ratio <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span>,</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x00394;</mi><msub><mi>s</mi><mi>t</mi></msub><mo>&#x0003D;</mo><mi>&#x00394;</mi><msub><mi>y</mi><mi>t</mi></msub><mo>&#x02212;</mo><mi>&#x003B2;</mi><mi>&#x00394;</mi><msub><mi>x</mi><mi>t</mi></msub><mo>&#x0002C;</mo><mspace width="2em" /><msubsup><mi>r</mi><mi>t</mi><mrow><mrow><mi mathvariant="normal">g</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">s</mi></mrow></mrow></msubsup><mo>&#x0003D;</mo><msub><mi>p</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mfrac><mrow><mi>&#x00394;</mi><msub><mi>s</mi><mi>t</mi></msub></mrow><mrow><mo stretchy="false">&#x0007C;</mo><msub><mi>y</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo stretchy="false">&#x0007C;</mo><mo>&#x0002B;</mo><mo stretchy="false">&#x0007C;</mo><mi>&#x003B2;</mi><mo stretchy="false">&#x0007C;</mo><mspace width="0.167em" /><mo stretchy="false">&#x0007C;</mo><msub><mi>x</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo stretchy="false">&#x0007C;</mo></mrow></mfrac><mo>&#x0002E;</mo></mrow></math></div></p>
+<p>Each position change charges <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>2</mn><mo>&#x000D7;</mo><mn>5</mn></mrow></math></span> bps (both legs). Equity compounds from 1. Headline metrics: total return, annualised Sharpe on daily P&amp;L, maximum drawdown, annualised volatility, and one-day <strong>historical 95% VaR</strong> (the 5% quantile of daily P&amp;L, reported as a positive loss).</p>
+<h3 id="27-traintest-and-rolling-inl43">2.7 Train/test and rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span></h3>
+<ul>
+<li><strong>Train/test:</strong> first 70% of dates = formation (estimate <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B1;</mi><mo>&#x0002C;</mo><mi>&#x003B2;</mi></mrow></math></span>, OU, <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span>); last 30% = trade with <strong>frozen</strong> parameters.  </li>
+<li><strong>Rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span>:</strong> re-estimate EG+OU every 12 trading days on a 168-day (~8 month) window; compare fixed vs rolling books under the same <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span>.</li>
+</ul>
+<hr />
+<h2 id="3-numerical-methods-inventory">3. Numerical methods inventory</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Implementation</th>
+<th>Notes / limitations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Matrix OLS</td>
+<td>Own (<code>cointegration.ols_matrix</code>)</td>
+<td>Homoskedastic SEs; fine at this scale</td>
+</tr>
+<tr>
+<td>ADF on observed series</td>
+<td>Own, standard CVs</td>
+<td>Used for the I(1) screen</td>
+</tr>
+<tr>
+<td>KPSS</td>
+<td><code>statsmodels</code></td>
+<td>Auxiliary; <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>H</mi><mn>0</mn></msub></mrow></math></span> is stationarity</td>
+</tr>
+<tr>
+<td>EG residual ADF (lag 1)</td>
+<td>Own</td>
+<td>MacKinnon <em>EG</em> critical values (stricter)</td>
+</tr>
+<tr>
+<td>ECM <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi></mrow></math></span> regression</td>
+<td>Own</td>
+<td>Bivariate sketch, not a full VECM</td>
+</tr>
+<tr>
+<td>VAR lag AIC/BIC + stability</td>
+<td><code>statsmodels</code> VAR on log-returns</td>
+<td>Diagnostic only; not a forecast</td>
+</tr>
+<tr>
+<td>Johansen trace / <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span></td>
+<td><code>statsmodels</code> <code>coint_johansen</code></td>
+<td>Lag via AIC; complex→real cast</td>
+</tr>
+<tr>
+<td>OU / AR(1) map</td>
+<td>Own</td>
+<td>Breaks down if <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>b</mi><mo>&#x02209;</mo><mo stretchy="false">&#x00028;</mo><mn>0</mn><mo>&#x0002C;</mo><mn>1</mn><mo stretchy="false">&#x00029;</mo></mrow></math></span></td>
+</tr>
+<tr>
+<td><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> grid + positions</td>
+<td>Own</td>
+<td>Heuristic target trades/year</td>
+</tr>
+<tr>
+<td>Dollar-neutral backtest</td>
+<td>Own</td>
+<td>Gross-notional scaling; simplified costs</td>
+</tr>
+<tr>
+<td>Historical 95% VaR</td>
+<td>Own empirical quantile</td>
+<td>One-day, no parametric assumption</td>
+</tr>
+<tr>
+<td>Z / cost / hedge / ADF-gate stress</td>
+<td>Own (<code>compare.py</code>)</td>
+<td>Train parameters frozen on test</td>
+</tr>
+<tr>
+<td>Rolling EG path</td>
+<td>Own</td>
+<td>Step-hold parameters between stamps</td>
+</tr>
+<tr>
+<td>Price download</td>
+<td><code>yfinance</code></td>
+<td>Vendor adjustments; cache parquet</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-results-ewaewc-main">4. Results — EWA–EWC (main)</h2>
+<h3 id="41-integration-order">4.1 Integration order</h3>
+<p>Both EWA and EWC look I(1): ADF does <strong>not</strong> reject a unit root on prices, KPSS <strong>does</strong> reject stationarity on prices, and ADF strongly rejects a unit root on first differences (all six ETF legs in the study share this pattern).</p>
+<table>
+<thead>
+<tr>
+<th>Series</th>
+<th>ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span> (levels)</th>
+<th>Reject UR @5%?</th>
+<th>ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span> (diff)</th>
+<th>Reject UR @5%?</th>
+<th>KPSS rejects I(0) on levels?</th>
+<th>Looks I(1)?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EWA</td>
+<td>−0.87</td>
+<td>No</td>
+<td>−31.5</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>EWC</td>
+<td>+0.86</td>
+<td>No</td>
+<td>−31.3</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p>This is the prerequisite for EG: we are allowed to regress <em>levels</em> and then ask whether the residual is I(0).</p>
+<h3 id="42-full-sample-cointegration">4.2 Full-sample cointegration</h3>
+<p><strong>Figure — prices.</strong> EWA and EWC travel together over 2019–2026 (commodity-country risk-on), but the gap is not constant: EWC trends higher relative to EWA after 2022. That visual already hints that a single full-sample <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> may be too rigid.</p>
+<p><img alt="Prices" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_prices.png" /></p>
+<p>Estimated relation:</p>
+<p><div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">W</mi><mi mathvariant="normal">A</mi></mrow><mi>t</mi></msub><mo>&#x02248;</mo><mn>7.65</mn><mo>&#x0002B;</mo><mn>0.38</mn><mspace width="0.167em" /><msub><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">W</mi><mi mathvariant="normal">C</mi></mrow><mi>t</mi></msub><mo>&#x0002B;</mo><msub><mi>e</mi><mi>t</mi></msub><mo>&#x0002C;</mo><mspace width="2em" /><msup><mi>R</mi><mn>2</mn></msup><mo>&#x02248;</mo><mn>0.93</mn><mo>&#x0002E;</mo></mrow></math></div></p>
+<ul>
+<li>ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi><mo>&#x02248;</mo><mo>&#x02212;</mo><mn>3.19</mn></mrow></math></span>: significant at <strong>10%</strong>, <strong>not</strong> at 5%.  </li>
+<li>ECM <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi><mo>&#x02248;</mo><mo>&#x02212;</mo><mn>0.013</mn></mrow></math></span> (<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>t</mi><mo>&#x02248;</mo><mo>&#x02212;</mo><mn>3.75</mn></mrow></math></span>): economically the right sign.  </li>
+<li>Johansen (log-prices): trace statistic <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02248;</mo><mn>15.28</mn></mrow></math></span> vs 5% critical value <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>15.49</mn></mrow></math></span> — <strong>rank 0</strong> at 5%, extremely borderline.</li>
+</ul>
+<p><strong>Interpretation:</strong> the pair is a <em>soft</em> cointegration candidate. Treating 5% rejection as a hard gate would stop the project; we proceed cautiously and let OOS results adjudicate.</p>
+<p><strong>Figure — residual and bands.</strong> The residual wanders around <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BC;</mi><mo>&#x02248;</mo><mn>0</mn></mrow></math></span> with slow swings (consistent with a 43-day half-life). The <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x000B1;</mi><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mi>&#x003C3;</mi></mrow></math></span> lines at <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> sit close to the residual, so the book is in the market most of the time — this is <em>not</em> a rare-event arb.</p>
+<p><img alt="Residual bands" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_residual_bands.png" /></p>
+<h3 id="43-sub-period-eg-brief-has-the-ec-term-stayed-the-same">4.3 Sub-period EG (brief: “has the EC term stayed the same?”)</h3>
+<p>Breaks at COVID (2020-03-01) and the inflation/rate regime (2022-01-01):</p>
+<table>
+<thead>
+<tr>
+<th>Period</th>
+<th><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>n</mi></mrow></math></span></th>
+<th><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span></th>
+<th>ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span></th>
+<th>Coint @5% / @10%</th>
+<th>ECM <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi></mrow></math></span></th>
+<th><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>t</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003BB;</mi><mo stretchy="false">&#x00029;</mo></mrow></math></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2019-01-02 → 2020-02-29</td>
+<td>292</td>
+<td>0.66</td>
+<td>−2.12</td>
+<td>No / No</td>
+<td>−0.063</td>
+<td>−2.73</td>
+</tr>
+<tr>
+<td>2020-03-01 → 2021-12-31</td>
+<td>465</td>
+<td>0.56</td>
+<td>−1.22</td>
+<td>No / No</td>
+<td>−0.023</td>
+<td>−2.32</td>
+</tr>
+<tr>
+<td>2022-01-01 → 2026-08-12</td>
+<td>1156</td>
+<td>0.34</td>
+<td>−3.17</td>
+<td>No / Yes</td>
+<td>−0.018</td>
+<td>−3.53</td>
+</tr>
+</tbody>
+</table>
+<p><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> <strong>halves</strong> from 0.66 to 0.34. <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi></mrow></math></span> stays negative (the right sign) but shrinks in magnitude. The EC mechanism does <em>not</em> stay the same — exactly the structural-break concern the brief asks us to discuss.</p>
+<h3 id="44-var-lag-stability-log-returns">4.4 VAR lag / stability (log-returns)</h3>
+<p>For EWA–EWC, AIC selects <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>p</mi><mo>&#x0003D;</mo><mn>7</mn></mrow></math></span>, BIC selects <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>p</mi><mo>&#x0003D;</mo><mn>2</mn></mrow></math></span>. The AIC companion modulus is 0.82 <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x0003C;</mo><mn>1</mn></mrow></math></span> (stable). We do <strong>not</strong> use this VAR to forecast; it only confirms that the <em>changes</em> are a well-behaved short-memory system, while the <em>levels</em> remain the object of cointegration.</p>
+<h3 id="45-ou-and-inl74">4.5 OU and <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span></h3>
+<ul>
+<li>Half-life <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02248;</mo><mn>43</mn></mrow></math></span> trading days — slow but usable mean reversion.  </li>
+<li><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003C3;</mi><mrow><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">q</mi></mrow></mrow></msub><mo>&#x02248;</mo><mn>0.99</mn></mrow></math></span> (price units of the residual).  </li>
+<li>Grid trade counts decrease monotonically in <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi></mrow></math></span> (Figure below). Heuristic selects <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> (closest to ~4 trades/year; realised ~2.9). Time-in-market at <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> is high (~81%), so this threshold is <strong>aggressive</strong>.</li>
+</ul>
+<p><strong>Figure — <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> vs trade count.</strong> Wider bands produce fewer round-trips (22 at <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> down to 2 at <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi><mo>&#x0003D;</mo><mn>2.5</mn></mrow></math></span>), matching Diamond’s (2014) trade-count / half-life discussion: a slow OU cannot generate a high-frequency arb without sitting in the market almost continuously.</p>
+<p><img alt="Z-star trades" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_zstar_trades.png" /></p>
+<h3 id="46-in-sample-vs-out-of-sample-backtests">4.6 In-sample vs out-of-sample backtests</h3>
+<table>
+<thead>
+<tr>
+<th>Lens</th>
+<th>Total return</th>
+<th>Ann. Sharpe</th>
+<th>Max DD</th>
+<th>Ann. vol</th>
+<th>1d 95% VaR</th>
+<th>Trades</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full-sample (IS)</td>
+<td>+45.7%</td>
+<td>0.59</td>
+<td>−12.4%</td>
+<td>9.1%</td>
+<td>0.66%</td>
+<td>22</td>
+</tr>
+<tr>
+<td>Train (70%)</td>
+<td>+18.7%</td>
+<td>0.45</td>
+<td>−7.7%</td>
+<td>—</td>
+<td>—</td>
+<td>13</td>
+</tr>
+<tr>
+<td><strong>Test (30%), frozen params</strong></td>
+<td><strong>−5.9%</strong></td>
+<td><strong>−0.42</strong></td>
+<td><strong>−9.7%</strong></td>
+<td><strong>6.0%</strong></td>
+<td><strong>0.58%</strong></td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Figure — train/test equity.</strong> Train equity drifts up; after the 2024-04-29 split the test path is a slow leak. P&amp;L is <em>not</em> a sequence of many small arb wins — the test book has only three round-trips.</p>
+<p><img alt="Train/test equity" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_train_test_equity.png" /></p>
+<p><strong>Figure — rolling 63-day Sharpe on test P&amp;L.</strong> The statistic oscillates around zero and spends long stretches negative. With three trades the Sharpe is noisy, but the sign is still the honest number.</p>
+<p><img alt="Test rolling Sharpe" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_test_rolling_sharpe.png" /></p>
+<p>The IS edge does <strong>not</strong> survive a chronological freeze of <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo>&#x0002C;</mo><mi>&#x003B2;</mi><mo>&#x0002C;</mo><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo stretchy="false">&#x00029;</mo></mrow></math></span>. This is the single most important empirical result for a QR-style reading of the project.</p>
+<h3 id="47-fixed-vs-rolling-inl84">4.7 Fixed vs rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span></h3>
+<p><strong>Figure — fixed vs rolling equity and drawdowns.</strong> Rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> stays closer to flat and does not reduce drawdowns. Extra re-estimation adds turnover (70 vs 22 trades) without adding edge.</p>
+<p><img alt="Fixed vs rolling" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_fixed_vs_rolling.png" /></p>
+<p><strong>Figure — rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> path.</strong> The hedge ratio is not a 3–6 month constant: it wanders from roughly 0.3 to 0.9. That is the empirical answer to the brief’s question “is stable <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> a realistic assumption?”</p>
+<p><img alt="Beta path" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_beta_path.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Book</th>
+<th>Return</th>
+<th>Sharpe</th>
+<th>Trades</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fixed <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> (full sample)</td>
+<td>+45.7%</td>
+<td>0.59</td>
+<td>22</td>
+</tr>
+<tr>
+<td>Rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> (168d / 12d)</td>
+<td>+8.1%</td>
+<td>0.18</td>
+<td>70</td>
+</tr>
+</tbody>
+</table>
+<p>Rolling estimation increases turnover and destroys most of the IS edge — consistent with noisy <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> paths (mean <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02248;</mo><mn>0.56</mn></mrow></math></span>, std <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02248;</mo><mn>0.20</mn></mrow></math></span>) when cointegration is only borderline.</p>
+<h3 id="48-structural-break-discussion-ewaewc">4.8 Structural-break discussion (EWA–EWC)</h3>
+<p>Potential rupture channels (qualitative, as required by the brief):</p>
+<ol>
+<li><strong>Commodity terms-of-trade divergence</strong> — iron ore / LNG (Australia) vs oil / softs (Canada) can decouple country betas.  </li>
+<li><strong>FX regimes</strong> — AUD and CAD move with different dollar cycles; ETF prices embed FX.  </li>
+<li><strong>COVID and 2022 inflation shock</strong> — risk-on correlations spiked then fractured; sub-period EG already shows unstable <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> (pre-COVID <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi><mo>&#x02248;</mo><mn>0.66</mn></mrow></math></span> vs post-2022 <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi><mo>&#x02248;</mo><mn>0.34</mn></mrow></math></span> in an earlier smoke split).  </li>
+<li><strong>Policy / rate differentials</strong> — RBA vs BoC paths change relative equity discounts.</li>
+</ol>
+<p>Operational implication: a production desk would gate trading on rolling ADF/<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi></mrow></math></span> and halt when half-life explodes or Johansen rank collapses — none of which is guaranteed by a static full-sample fit.</p>
+<h3 id="49-stress-tests-and-alternative-specifications-ewaewc">4.9 Stress tests and alternative specifications (EWA–EWC)</h3>
+<p>These checks exist so the headline <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> / 5 bps / EG-<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> book is not a single untested recipe.</p>
+<p><strong>Z grid, train vs frozen test.</strong> Every test Sharpe is negative. Widening <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi></mrow></math></span> improves <em>train</em> Sharpe (peak 0.75 at <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi><mo>&#x0003D;</mo><mn>2.0</mn></mrow></math></span>) but does <strong>not</strong> create a profitable test book (test Sharpe ranges from <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>0.20</mn></mrow></math></span> to <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>0.53</mn></mrow></math></span>). The OOS failure is therefore not an artefact of the aggressive <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup><mo>&#x0003D;</mo><mn>0.5</mn></mrow></math></span> heuristic.</p>
+<p><img alt="Z Sharpe IS vs OOS" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/ewa_ewc_z_sharpe_is_oos.png" /></p>
+<table>
+<thead>
+<tr>
+<th><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi></mrow></math></span></th>
+<th>Train Sharpe</th>
+<th>Test Sharpe</th>
+<th>Test trades</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.50</td>
+<td>0.45</td>
+<td>−0.42</td>
+<td>3</td>
+</tr>
+<tr>
+<td>1.00</td>
+<td>0.57</td>
+<td>−0.35</td>
+<td>2</td>
+</tr>
+<tr>
+<td>1.50</td>
+<td>0.53</td>
+<td>−0.20</td>
+<td>2</td>
+</tr>
+<tr>
+<td>2.00</td>
+<td>0.75</td>
+<td>−0.53</td>
+<td>1</td>
+</tr>
+<tr>
+<td>2.50</td>
+<td>0.68</td>
+<td>−0.29</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Transaction costs.</strong> Test Sharpe is already <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>0.38</mn></mrow></math></span> at <strong>zero</strong> cost, and falls to <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>0.53</mn></mrow></math></span> at 20 bps/leg. The OOS leak is a <em>signal</em> problem, not a cost problem. Full-sample Sharpe declines smoothly with costs (0.65 → 0.41), as a well-coded ledger should.</p>
+<table>
+<thead>
+<tr>
+<th>bps/leg</th>
+<th>Full Sharpe</th>
+<th>Test Sharpe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>0.65</td>
+<td>−0.38</td>
+</tr>
+<tr>
+<td>5</td>
+<td>0.59</td>
+<td>−0.42</td>
+</tr>
+<tr>
+<td>10</td>
+<td>0.53</td>
+<td>−0.46</td>
+</tr>
+<tr>
+<td>20</td>
+<td>0.41</td>
+<td>−0.53</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Hedge specification (full sample).</strong> A naive <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span> residual is <em>not</em> mean-reverting (ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi><mo>&#x0003D;</mo><mo>&#x0002B;</mo><mn>1.61</mn></mrow></math></span>, OU map fails) and earns almost nothing (Sharpe 0.07, 3 trades). That is the brief’s warning in numbers. A Johansen log-spread (<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>log</mi><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">W</mi><mi mathvariant="normal">A</mi></mrow><mo>&#x02212;</mo><mn>0.62</mn><mi>log</mi><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">W</mi><mi mathvariant="normal">C</mi></mrow></mrow></math></span>) looks <em>better</em> in-sample (Sharpe 0.72, half-life 31d) — useful as a robustness spec, but it is still a full-sample fit and does not overturn the frozen-parameter OOS result.</p>
+<table>
+<thead>
+<tr>
+<th>Spec</th>
+<th>ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi></mrow></math></span></th>
+<th>Half-life</th>
+<th>Sharpe</th>
+<th>Trades</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EG levels (baseline)</td>
+<td>−3.19</td>
+<td>43d</td>
+<td>0.59</td>
+<td>22</td>
+</tr>
+<tr>
+<td>Naive <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span></td>
+<td>+1.61</td>
+<td>n/a</td>
+<td>0.07</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Johansen log-spread</td>
+<td>−3.41</td>
+<td>31d</td>
+<td>0.72</td>
+<td>25</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rolling ADF 10% kill-switch.</strong> Using a 168-day window, the residual passes the MacKinnon 10% screen on only <strong>1.1%</strong> of days. The gated book is nearly flat (Sharpe <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><mn>0.35</mn></mrow></math></span>, 7 trades). This is consistent with borderline cointegration: a desk that refuses to trade without a live stationarity gate would simply stay out.</p>
+<hr />
+<h2 id="5-results-control-pairs">5. Results — control pairs</h2>
+<p>Headline metrics from the unified smoke pipeline (same methodology):</p>
+<table>
+<thead>
+<tr>
+<th>Pair</th>
+<th>EG @5%</th>
+<th>Johansen rank@5%</th>
+<th>Half-life</th>
+<th>IS ret / Sharpe</th>
+<th>OOS ret / Sharpe</th>
+<th>Rolling ret / Sharpe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EWA–EWC</td>
+<td>No</td>
+<td>0</td>
+<td>43d</td>
+<td>+46% / 0.59</td>
+<td>−5.9% / −0.42</td>
+<td>+8% / 0.18</td>
+</tr>
+<tr>
+<td>XLE–XOP</td>
+<td>No</td>
+<td>0</td>
+<td>108d</td>
+<td>+41% / 0.51</td>
+<td>−9.1% / −0.82</td>
+<td>−26% / −0.41</td>
+</tr>
+<tr>
+<td>GLD–GDX</td>
+<td>No</td>
+<td>0</td>
+<td>74d</td>
+<td>+69% / 0.79</td>
+<td>−4.0% / −0.17</td>
+<td>+5% / 0.12</td>
+</tr>
+</tbody>
+</table>
+<p><strong>XLE–XOP:</strong> very slow mean reversion (~108 days) and the weakest OOS / rolling results — a warning that energy sub-sector basis can trend for long periods (opex, inventory, WTI–refined cracks). Sub-period EG is revealing: the pair <em>does</em> pass EG at 5% in 2020–21 (<span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mn>3.89</mn></mrow></math></span>, <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003BB;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mn>0.067</mn></mrow></math></span>) and then <strong>loses</strong> cointegration after 2022. IS 95% VaR is 0.91% per day.</p>
+<p><img alt="XLE–XOP overview" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/xle_xop_overview.png" /></p>
+<p><strong>GLD–GDX:</strong> richest IS Sharpe but still negative OOS; miners’ equity beta makes the “gold pair” a hybrid of commodity and stock-factor residual, fragile when real yields reprice. <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> jumps from ~3.2 (pre-COVID) to ~1.95 (2020–21) and back to ~3.9 after 2022. IS 95% VaR is 0.84% per day.</p>
+<p><img alt="GLD–GDX overview" src="file:///Users/myk070629/Desktop/Study/Portfolio/portfolio/certification-projects/CQF/final/figures/gld_gdx_overview.png" /></p>
+<hr />
+<h2 id="6-discussion">6. Discussion</h2>
+<h3 id="61-does-cumulative-pl-look-like-arbitrage">6.1 Does cumulative P&amp;L look like arbitrage?</h3>
+<p>In-sample equity curves rise with moderate drawdowns, <em>resembling</em> a mean-reversion harvest. Out-of-sample, the book behaves like a <strong>failed</strong> arb: few trades, negative drift, rolling Sharpe oscillating around zero. True statistical arbitrage should show many small positive expectancy trades with controlled inventory; here expectancy is not stable across time.</p>
+<h3 id="62-computational-statistical-properties">6.2 Computational / statistical properties</h3>
+<ul>
+<li><strong>Bias:</strong> full-sample EG + OU + <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> reuse the same path for fitting and trading → optimistic IS Sharpe.  </li>
+<li><strong>Variance:</strong> with only ~3 OOS trades on EWA–EWC, test Sharpe is noisy; the sign is still informative.  </li>
+<li><strong>Sensitivity:</strong> the test Sharpe stays negative across the whole <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Z</mi></mrow></math></span> grid and even at zero costs — the failure is not a calibration footnote. Full-sample Sharpe <em>does</em> fall smoothly with bps, which is a sanity check on the ledger.  </li>
+<li><strong>Specification:</strong> naive <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi><mo>&#x0003D;</mo><mn>1</mn></mrow></math></span> destroys residual stationarity (ADF <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C4;</mi><mo>&#x0003E;</mo><mn>0</mn></mrow></math></span>); Johansen logs improve <em>in-sample</em> Sharpe but inherit the same look-ahead. A live ADF gate is almost always off (1.1% of days).  </li>
+<li><strong>Cointegration gate:</strong> failing the 5% EG/Johansen tests is not a coding bug — it is a <strong>market</strong> statement that should dominate any IS backtest narrative.</li>
+</ul>
+<h3 id="63-pros-and-cons">6.3 Pros and cons</h3>
+<p><strong>Pros</strong></p>
+<ul>
+<li>Transparent, auditable numerical stack aligned with the brief.  </li>
+<li>Honest OOS and rolling experiments prevent over-claiming.  </li>
+<li>Multi-pair design separates “story” (EWA–EWC) from stress controls.</li>
+</ul>
+<p><strong>Cons / limitations</strong></p>
+<ul>
+<li>Borderline cointegration; strategy is research-grade, not production-ready.  </li>
+<li>Single-name ETF liquidity and borrow ignored.  </li>
+<li>No short-sale fees, borrow recall, or intraday execution model.  </li>
+<li><span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> heuristic is pragmatic, not utility-optimal.  </li>
+<li>Johansen critical values and EG MacKinnon tables are asymptotic.</li>
+</ul>
+<h3 id="64-further-work">6.4 Further work</h3>
+<ol>
+<li>Formation/trading windows with hard cointegration gates before any order.  </li>
+<li>Kalman / adaptive hedge ratios with shrinkage toward a prior <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span>.  </li>
+<li>Cost and borrow calibrated to broker data; capacity constraints.  </li>
+<li>Broader universe search with multiple-testing control (McSharry-style).  </li>
+<li>Event studies around commodity shocks for the structural-break section.</li>
+</ol>
+<hr />
+<h2 id="7-conclusion">7. Conclusion</h2>
+<p>We built a complete TS pairs pipeline — matrix EG, Johansen, OU bands, <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>Z</mi><mo>&#x0002A;</mo></msup></mrow></math></span> scan, costed backtests, train/test, and rolling <span class="math-inline"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B2;</mi></mrow></math></span> — on three economically motivated ETF pairs. <strong>In-sample metrics are not reliable:</strong> for EWA–EWC the OOS Sharpe is negative and rolling re-estimation removes most of the apparent edge. The project therefore demonstrates both the <em>construction</em> of a cointegration pairs strategy and the <em>quant discipline</em> of invalidating it under realistic validation — the outcome that matters for a quantitative researcher.</p>
+<hr />
+<h2 id="references">References</h2>
+<ul>
+<li>Engle, R.F. and Granger, C.W.J. (1987). Co-integration and error correction: Representation, estimation, and testing. <em>Econometrica</em>, 55(2), 251–276.</li>
+<li>Johansen, S. (1991). Estimation and hypothesis testing of cointegration vectors in Gaussian vector autoregressive models. <em>Econometrica</em>, 59(6), 1551–1580.</li>
+<li>Kwiatkowski, D., Phillips, P.C.B., Schmidt, P. and Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root. <em>Journal of Econometrics</em>, 54, 159–178.</li>
+<li>MacKinnon, J.G. (2010). Critical values for cointegration tests. Queen’s Economics Department Working Paper No. 1227.</li>
+<li>Hendry, D.F. and Juselius, K. (2000). Explaining cointegration analysis: Part I. <em>The Energy Journal</em>, 21(1), 1–42.</li>
+<li>Diamond, R.V. (2014). Learning and trusting cointegration in statistical arbitrage. <em>Wilmott</em> (OU mapping and number-of-trades appendices).</li>
+<li>McSharry, P. Efficient pair selection for pair-trading strategies (ADF filter). CQF lecture / workshop notes.</li>
+<li>CQF Cointegration Lecture; Project Workshop / Tutorial notes for TS.</li>
+</ul>
+</body>
+</html>

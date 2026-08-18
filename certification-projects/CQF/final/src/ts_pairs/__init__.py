@@ -1,4 +1,4 @@
-"""Pairs-trading research package."""
+"""CQF Final Project — TS: Pairs Trading Strategy Design & Backtest."""
 
 from __future__ import annotations
 
